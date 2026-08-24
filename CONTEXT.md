@@ -8,7 +8,6 @@ This file is the project's glossary and nothing else. No implementation details,
 
 **SpeechDeck**:
 The presentation framework.
-_Avoid_: presenter-wayfinder
 
 **Speech**:
 The spoken narrative; untagged prose in the source, not shown to the audience.
