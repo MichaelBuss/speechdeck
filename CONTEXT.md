@@ -1,10 +1,13 @@
-# Presentation Stack
+# SpeechDeck
 
-A web-based presentation framework built on iA Presenter's mental model — you write a document, the headings reach the audience, the **Speech** stays with the speaker, and the layout reflows to fill whatever screen it lands on. It adds the things a developer talk needs that iA Presenter lacks: live web **Embeds**, code on **Slides**, and inline **Marks**.
+**SpeechDeck** is a web-based presentation framework built on iA Presenter's mental model — you write a document, the headings reach the audience, the **Speech** stays with the speaker, and the layout reflows to fill whatever screen it lands on. It adds the things a developer talk needs that iA Presenter lacks: live web **Embeds**, code on **Slides**, and inline **Marks**.
 
-This file is the project's glossary and nothing else. No implementation details, no decisions, no plans — those live in `docs/adr/` and in the [wayfinder map](https://github.com/MichaelBuss/presenter-wayfinder/issues/1). Terms are added the moment they are resolved, never batched up.
+This file is the project's glossary and nothing else. No implementation details, no decisions, no plans — those live in `docs/adr/` and in the [wayfinder map](https://github.com/MichaelBuss/speechdeck/issues/1). Terms are added the moment they are resolved, never batched up.
 
 ## Language
+
+**SpeechDeck**:
+The presentation framework.
 
 **Speech**:
 The spoken narrative; untagged prose in the source, not shown to the audience.
@@ -41,6 +44,7 @@ _Avoid_: island, demo, widget, youtube (as a block type)
 
 ## Relationships
 
+- **SpeechDeck** is the framework; a **Deck** is one presentation written in it.
 - **Speech** is the only presenter-facing channel; there is no Note.
 - A **Deck** is a sequence of **Slides**; each **Slide** carries its **Speech**. A `---` starts a new **Slide**. Extra blank lines do not.
 - A **Deck**'s opening **Frontmatter** holds `theme` in v0. The first `#` is the title; there is no `title` key.
@@ -60,4 +64,4 @@ _Avoid_: island, demo, widget, youtube (as a block type)
 
 ## Flagged ambiguities
 
-- **theme vs template** — iA uses both words for different things; we currently use only "theme", possibly for both. Owned by [Theme model and the DOM contract themes style](https://github.com/MichaelBuss/presenter-wayfinder/issues/10).
+- **theme vs template** — iA uses both words for different things; we currently use only "theme", possibly for both. Owned by [Theme model and the DOM contract themes style](https://github.com/MichaelBuss/speechdeck/issues/10).
