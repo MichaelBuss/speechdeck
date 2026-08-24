@@ -42,17 +42,48 @@ _Avoid_: v-mark
 A live web mount on a **Slide**; always a module specifier (a repo path or an importable JS URL) with serializable props. A guest may put an iframe inside the host element; the framework does not.
 _Avoid_: island, demo, widget, youtube (as a block type)
 
+**Layout**:
+A named arrangement of **Cells** on a **Slide**. v0 ships Cover, Section, Solo, Split-2, Split-3, Grid, and Caption.
+_Avoid_: template, theme (those are not arrangements)
+
+**Contain**:
+An image mode that shows the whole file in the box; the leftover is letterboxed.
+_Avoid_: fit, object-fit contain
+
+**Crop**:
+An image mode that fills the box; the overflow is clipped.
+_Avoid_: cover, fit, fill, object-fit cover
+
+**Focus**:
+The 9-cell origin of an image: `top-left`, `top`, `top-right`, `left`, `center`, `right`, `bottom-left`, `bottom`, `bottom-right`.
+_Avoid_: object-position, anchor, crop origin
+
+**Background**:
+An image that is the **Slide**'s backdrop, not a **Cell**.
+_Avoid_: background-image layout (it is a role, not a Layout)
+
+**Look**:
+A named built-in treatment on an image. v0 ships `dim` and `blur`, combinable.
+_Avoid_: style, filter, effect, frost
+
 ## Relationships
 
 - **SpeechDeck** is the framework; a **Deck** is one presentation written in it.
 - **Speech** is the only presenter-facing channel; there is no Note.
 - A **Deck** is a sequence of **Slides**; each **Slide** carries its **Speech**. A `---` starts a new **Slide**. Extra blank lines do not.
 - A **Deck**'s opening **Frontmatter** holds `theme` in v0. The first `#` is the title; there is no `title` key.
-- A **Slide** may have **Frontmatter** immediately after its `---`, reserved for overrides later tickets will name. Empty **Frontmatter** is omitted. `theme` is **Deck**-only.
+- A **Slide** may have **Frontmatter** immediately after its `---`. In v0 the only key is `layout`. Empty **Frontmatter** is omitted. `theme` is **Deck**-only.
 - A **Slide** is made of **Cells**. A blank line starts a new **Cell**. **Speech** and **Comments** do not occupy a **Cell**. "Block" is CommonMark's word, not ours.
 - Headings, tables, images, fenced code, block math, and **Embeds** appear on a **Slide** by themselves; paragraphs, lists and quotes remain **Speech** unless **Promotion** precedes them.
 - An **Embed** is a fenced block with info string `embed` and a module specifier; optional YAML body for props. It is a **Cell**. YouTube and other framed pages are the same fence, pointing at an iframe guest (typically scaffold-supplied), not a second block type.
 - Images and **Embeds** are files in the repo, referenced by path; there is no media library.
+- A **Slide** has one **Layout**, chosen from **Cell** count and types. Cover is the talk-title **Layout**; **Crop** is an image mode — they are not the same word.
+- Auto **Layout**: H1-only → Cover; one heading H2+ → Section; one **Cell** otherwise → Solo; two **Cells** → Split-2, except H4 + image (either order) → Caption; three → Split-3; four or more → Grid. A **Background** is not a **Cell** and does not bump the count.
+- A **Slide** **Frontmatter** `layout:` key, when present, wins. Value is one of `cover`, `section`, `solo`, `split-2`, `split-3`, `grid`, `caption`. An impossible override is a lint error; auto still renders. The pick does not change with the viewport — CSS adapts the same **Layout**.
+- A heading that fits on one line is centered; a heading that wraps is start-aligned. There is no author override.
+- A **Slide** that still cannot fit its **Cells** after reflow is an authoring error: the audience never gets a scaled canvas or a scrolling **Slide**.
+- An image is spelled `![alt](./file.jpg)` with an optional title of tokens, in order, all optional: `background`, then `contain | crop`, then a **Focus**, then any **Looks**. Unrecognized tokens are a lint error. Default is **Contain**, **Focus** `center`, no **Look**. A **Background** image defaults to **Crop**. Captions are an H4 **Cell**, never the title string.
+- A `background` title makes that image a **Background**: it drops out of the **Cell** count, so a heading on a photo is still Cover or Section, not Split.
 - `<!--on-->` is reserved for **Promotion**; any other HTML comment is a **Comment**.
 - A **Mark** is spelled `<mark>` or `<mark data-mark="circle">`. Types: `underline`, `circle`, `highlight`, `box`, `strike-through`. Default type is `underline`. **Marks** are not used inside fenced code.
 - The source of a **Deck** is CommonMark Markdown with YAML **Frontmatter** — not MDX, and not TypeScript.
