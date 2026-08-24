@@ -75,6 +75,7 @@ _Avoid_: style, filter, effect, frost
 - A **Slide** may have **Frontmatter** immediately after its `---`. In v0 the only key is `layout`. Empty **Frontmatter** is omitted. `theme` is **Deck**-only.
 - A **Slide** is made of **Cells**. A blank line starts a new **Cell**. **Speech** and **Comments** do not occupy a **Cell**. "Block" is CommonMark's word, not ours.
 - Headings, tables, images, fenced code, block math, and **Embeds** appear on a **Slide** by themselves; paragraphs, lists and quotes remain **Speech** unless **Promotion** precedes them.
+- Fenced code is a **Cell**. When two **Slides** are connected, their code **Cells** pair by index; matching regions morph. A leftover **Cell**, and any code on a hard-cut, does not. There is no match id on the fence.
 - An **Embed** is a fenced block with info string `embed` and a module specifier; optional YAML body for props. It is a **Cell**. YouTube and other framed pages are the same fence, pointing at an iframe guest (typically scaffold-supplied), not a second block type.
 - Images and **Embeds** are files in the repo, referenced by path; there is no media library.
 - A **Slide** has one **Layout**, chosen from **Cell** count and types. Cover is the talk-title **Layout**; **Crop** is an image mode — they are not the same word.
@@ -92,6 +93,9 @@ _Avoid_: style, filter, effect, frost
 
 > **Dev:** "If I write a paragraph, does the audience see it?"
 > **Domain expert:** "No — that's **Speech**. Put `<!--on-->` on the line before it; that's **Promotion**. A `<!-- check the demo wifi -->` is a **Comment** and nobody sees it while presenting."
+>
+> **Dev:** "If I change the function on the next **Slide**, does the code morph?"
+> **Domain expert:** "If those **Slides** are connected, the first code **Cell** morphs into the first. There is no id on the fence."
 
 ## Flagged ambiguities
 
