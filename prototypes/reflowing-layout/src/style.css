@@ -1,0 +1,443 @@
+@import "tailwindcss";
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  margin: 0;
+  height: 100%;
+  background: #111;
+  color: #f4f1ea;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+}
+
+#app {
+  display: grid;
+  grid-template-rows: auto auto 1fr 0;
+  min-height: 100%;
+}
+
+.hud {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.25rem;
+  padding: 0.55rem 0.9rem;
+  background: #000;
+  color: #9dff57;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.35;
+  z-index: 20;
+}
+
+.hud strong {
+  color: #fff;
+  font-weight: 600;
+}
+
+.hud[data-overflow="true"] {
+  background: #4a0000;
+  color: #ffb4b4;
+}
+
+.hud[data-impossible="true"] {
+  box-shadow: inset 0 -3px 0 #f5c542;
+}
+
+.stage-wrap {
+  display: grid;
+  place-items: center;
+  padding: 1rem 1rem 4.5rem;
+  min-height: 0;
+  background:
+    radial-gradient(circle at 20% 0%, #1b1b1b, #0c0c0c 55%);
+}
+
+.stage {
+  position: relative;
+  background: #1a1814;
+  overflow: hidden;
+  box-shadow: 0 12px 40px rgb(0 0 0 / 0.45);
+}
+
+.stage[data-preset="fill"] {
+  width: 100%;
+  height: 100%;
+}
+
+.stage:not([data-preset="fill"]) {
+  resize: both;
+  max-width: 100%;
+  max-height: 100%;
+}
+
+.slide {
+  container-type: size;
+  container-name: slide;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  position: relative;
+  color: #f7f3ea;
+  font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+}
+
+.backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+}
+
+.backdrop img {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.backdrop[data-look~="blur"] img {
+  filter: blur(1.15rem);
+  transform: scale(1.1);
+}
+
+.backdrop::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.backdrop[data-look~="dim"]::after {
+  background: rgb(8 6 4 / 0.5);
+}
+
+.cells {
+  position: relative;
+  z-index: 1;
+  height: 100%;
+  min-height: 0;
+  display: grid;
+  /* Each axis is 6% of itself, but never more than 10% of the other —
+     a 754×139 Slide must not spend 45px of its 139px on padding. */
+  padding-inline: min(6cqi, 10cqb);
+  padding-block: min(6cqb, 10cqi);
+  gap: min(3.5cqi, 5cqb);
+}
+
+.cell {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  display: grid;
+  align-content: start;
+  gap: 1.5cqi;
+}
+
+.cell img {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  display: block;
+}
+
+.cell[data-look~="blur"] img {
+  filter: blur(0.6rem);
+}
+
+.cell[data-look~="dim"] img {
+  filter: brightness(0.55);
+}
+
+.cell[data-look~="dim"][data-look~="blur"] img {
+  filter: blur(0.6rem) brightness(0.55);
+}
+
+img[data-fit="contain"] {
+  object-fit: contain;
+}
+
+img[data-fit="crop"] {
+  object-fit: cover;
+}
+
+img[data-focus="top-left"] { object-position: top left; }
+img[data-focus="top"] { object-position: top; }
+img[data-focus="top-right"] { object-position: top right; }
+img[data-focus="left"] { object-position: left; }
+img[data-focus="center"] { object-position: center; }
+img[data-focus="right"] { object-position: right; }
+img[data-focus="bottom-left"] { object-position: bottom left; }
+img[data-focus="bottom"] { object-position: bottom; }
+img[data-focus="bottom-right"] { object-position: bottom right; }
+
+.kicker {
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  font-size: clamp(0.7rem, 1.8cqi, 1.15rem);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  opacity: 0.72;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  margin: 0;
+  text-wrap: balance;
+  overflow-wrap: anywhere;
+  line-height: 1.05;
+  font-weight: 600;
+}
+
+[data-align="center"] {
+  text-align: center;
+  justify-self: center;
+}
+
+[data-align="start"] {
+  text-align: start;
+  justify-self: stretch;
+  width: 100%;
+}
+
+.cell:has([data-align="start"]) {
+  justify-items: start;
+  text-align: start;
+}
+
+.cell:has([data-align="center"]) {
+  justify-items: center;
+  text-align: center;
+}
+
+h1 { font-size: clamp(2.1rem, 9cqi, 7.2rem); }
+h2 { font-size: clamp(1.7rem, 6.4cqi, 4.8rem); }
+h3 { font-size: clamp(1.15rem, 3.4cqi, 2.3rem); }
+h4 { font-size: clamp(1rem, 3cqi, 2rem); }
+
+pre {
+  margin: 0;
+  min-height: 0;
+  overflow: hidden;
+  padding: 2cqi;
+  border-radius: 0.6cqi;
+  background: rgb(0 0 0 / 0.45);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: clamp(0.65rem, 1.7cqi, 1.05rem);
+  line-height: 1.45;
+  white-space: pre-wrap;
+  text-wrap: pretty;
+  overflow-wrap: anywhere;
+}
+
+.embed {
+  min-height: 0;
+  min-width: 0;
+  height: 100%;
+  border-radius: 0.6cqi;
+  background: linear-gradient(160deg, #2a4a6a, #123 60%);
+  display: grid;
+  place-items: center;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  font-size: clamp(0.8rem, 2cqi, 1.2rem);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  opacity: 0.9;
+}
+
+.card {
+  min-height: 0;
+  padding: 2cqi;
+  border: 1px solid rgb(255 255 255 / 0.16);
+  border-radius: 0.7cqi;
+  background: rgb(255 255 255 / 0.04);
+}
+
+.overflow-bait {
+  min-height: 38cqi;
+}
+
+[data-layout="cover"],
+[data-layout="section"] {
+  place-items: center;
+  text-align: center;
+  align-content: center;
+}
+
+[data-layout="solo"] {
+  align-content: center;
+}
+
+[data-layout="split-2"] {
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: minmax(0, 1fr);
+}
+
+[data-layout="split-3"] {
+  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-rows: minmax(0, 1fr);
+}
+
+/* Code stays the size of the code. The Embed fills the pane — that's the demo. */
+[data-layout="split-2"] .cell:has(> :nth-child(2)) {
+  align-content: center;
+}
+
+[data-layout="split-2"] .cell:not(:has(> :nth-child(2))) {
+  align-content: stretch;
+  grid-template-rows: minmax(0, 1fr);
+}
+
+[data-layout="split-3"] .cell,
+[data-layout="grid"] .cell {
+  align-content: center;
+}
+
+[data-layout="grid"] {
+  grid-template-columns: repeat(2, 1fr);
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+}
+
+[data-layout="grid"][data-items="5"],
+[data-layout="grid"][data-items="6"] {
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+}
+
+[data-layout="caption"][data-caption-order="title-first"] {
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+[data-layout="caption"][data-caption-order="image-first"] {
+  grid-template-rows: minmax(0, 1fr) auto;
+}
+
+[data-layout="caption"] .cell:has(img) {
+  grid-template: minmax(0, 1fr) / minmax(0, 1fr);
+  place-items: center;
+  align-content: stretch;
+  min-height: 0;
+  min-width: 0;
+}
+
+/* WRO lightbox recipe: the image sizes to its ratio inside the pane.
+   Tailwind preflight's height:auto is the thing that collapsed the 1fr. */
+[data-layout="caption"] img[data-fit="contain"] {
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+
+[data-layout="caption"] img[data-fit="crop"] {
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+}
+
+/* compact-wide: short + landscape. Chrome beside the photo, not a leftover strip.
+   Fixed chrome column (WRO lightbox: 11rem) so the photo keeps the rest. */
+@container slide (aspect-ratio > 3/2) and (max-height: 32rem) {
+  [data-layout="caption"][data-caption-order="title-first"] {
+    grid-template-columns: 11rem minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+    align-items: stretch;
+  }
+
+  [data-layout="caption"][data-caption-order="image-first"] {
+    grid-template-columns: minmax(0, 1fr) 11rem;
+    grid-template-rows: minmax(0, 1fr);
+    align-items: stretch;
+  }
+
+  [data-layout="caption"] .cell:not(:has(img)) {
+    align-content: center;
+  }
+}
+
+@container slide (max-width: 42rem) {
+  [data-layout="split-2"] {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  [data-layout="split-3"] {
+    grid-template-columns: 1fr;
+    grid-template-rows: repeat(3, minmax(0, 1fr));
+  }
+
+  [data-layout="grid"] {
+    grid-template-columns: 1fr;
+  }
+}
+
+.switcher {
+  position: fixed;
+  left: 50%;
+  bottom: 0.85rem;
+  transform: translateX(-50%);
+  z-index: 30;
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+  padding: 0.35rem 0.4rem;
+  border-radius: 999px;
+  background: #f4f1ea;
+  color: #111;
+  box-shadow: 0 8px 28px rgb(0 0 0 / 0.4);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.switcher button {
+  appearance: none;
+  border: 0;
+  background: #111;
+  color: #f4f1ea;
+  border-radius: 999px;
+  min-width: 2rem;
+  height: 2rem;
+  cursor: pointer;
+  font: inherit;
+}
+
+.switcher .label {
+  min-width: 16rem;
+  text-align: center;
+  padding: 0 0.4rem;
+  white-space: nowrap;
+}
+
+.presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  padding: 0.4rem 0.6rem 0.55rem;
+  background: #000;
+}
+
+.presets button {
+  appearance: none;
+  border: 1px solid #444;
+  background: #1a1a1a;
+  color: #ddd;
+  border-radius: 999px;
+  padding: 0.2rem 0.65rem;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.presets button[aria-pressed="true"] {
+  background: #f4f1ea;
+  color: #111;
+  border-color: #f4f1ea;
+}
