@@ -13,6 +13,10 @@ The presentation framework.
 The spoken narrative; untagged prose in the source, not shown to the audience.
 _Avoid_: note, speaker notes, notes
 
+**Presenter view**:
+The speaker-facing surface: this **Slide**'s **Speech**, a preview of this **Slide**, and a preview of the next.
+_Avoid_: speaker notes, notes pane, presenter mode
+
 **Slide**:
 An audience-facing unit of the document; it reflows to the viewport and has no fixed canvas.
 _Avoid_: scene, page, beat, card
@@ -31,7 +35,7 @@ YAML metadata for a **Deck** or a **Slide**; facts that cannot live in the prose
 A reserved `<!--on-->` immediately before a paragraph, list or quote, putting that block on the **Slide**.
 
 **Comment**:
-Authoring-private text in an HTML comment; never shown on a **Slide** or in presenter view.
+Authoring-private text in an HTML comment; never shown on a **Slide** or in **Presenter view**.
 _Avoid_: `//`, note
 
 **Mark**:
@@ -84,7 +88,8 @@ _Avoid_: animation, none, never, full, all, on
 ## Relationships
 
 - **SpeechDeck** is the framework; a **Deck** is one presentation written in it. A **Deck** lives in a repo that depends on **SpeechDeck**; it is not a file a binary is pointed at.
-- **Speech** is the only presenter-facing channel; there is no Note.
+- **Speech** is the only presenter-facing channel; there is no Note. The audience sees the **Slide**; the speaker sees **Presenter view**.
+- **Presenter view** reflows to its viewport; it is not a fixed canvas. This **Slide**'s **Speech** is the primary surface; previews of this **Slide** and the next are secondary. **Presenter view** shows this **Slide**'s **Speech** only; advance replaces it. Overflow scrolls. It is not mirrored.
 - A **Deck** is a sequence of **Slides**; each **Slide** carries its **Speech**. A `---` starts a new **Slide**. Extra blank lines do not.
 - A **Deck**'s opening **Frontmatter** holds `theme`, `appearance`, and `motion` in v0. The first `#` is the title; there is no `title` key. `appearance` is `light`, `dark`, or `auto`. Default is dark. `motion` is `auto` or `always`. Default is auto. `always` does not invent motion on a hard cut.
 - A **Deck** has one **Theme**. A **Theme** may be a single colour; travelling through a sequence of colours is optional.
@@ -113,7 +118,10 @@ _Avoid_: animation, none, never, full, all, on
 ## Example dialogue
 
 > **Dev:** "If I write a paragraph, does the audience see it?"
-> **Domain expert:** "No — that's **Speech**. Put `<!--on-->` on the line before it; that's **Promotion**. A `<!-- check the demo wifi -->` is a **Comment** and nobody sees it while presenting."
+> **Domain expert:** "No — that's **Speech**. It lives in **Presenter view**. Put `<!--on-->` on the line before it; that's **Promotion**. A `<!-- check the demo wifi -->` is a **Comment** and nobody sees it while presenting."
+>
+> **Dev:** "Do I read **Speech** on the projector?"
+> **Domain expert:** "No — the audience sees the **Slide**. You read **Presenter view**. Open a second window onto the **Slide** to present; stay in one window to rehearse."
 >
 > **Dev:** "If I change the function on the next **Slide**, does the code morph?"
 > **Domain expert:** "If those **Slides** are connected, the first code **Cell** morphs into the first. There is no id on the fence."
