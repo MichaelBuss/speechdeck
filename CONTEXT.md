@@ -66,16 +66,31 @@ _Avoid_: background-image layout (it is a role, not a Layout)
 A named built-in treatment on an image. v0 ships `dim` and `blur`, combinable.
 _Avoid_: style, filter, effect, frost
 
+**Theme**:
+The named look of a **Deck**: type, colour, and optional travelling background.
+_Avoid_: template
+
+**Appearance**:
+Light, dark, or auto. A **Deck** picks one; a **Theme** provides both light and dark. Default is dark. Auto follows the environment; light and dark do not.
+
+**Motion**:
+Auto or always. A **Deck** picks one. Default is auto. Auto follows the environment's motion preference; always runs connected motion regardless.
+_Avoid_: animation, none, never, full, all, on
+
 ## Relationships
 
 - **SpeechDeck** is the framework; a **Deck** is one presentation written in it.
 - **Speech** is the only presenter-facing channel; there is no Note.
 - A **Deck** is a sequence of **Slides**; each **Slide** carries its **Speech**. A `---` starts a new **Slide**. Extra blank lines do not.
-- A **Deck**'s opening **Frontmatter** holds `theme` in v0. The first `#` is the title; there is no `title` key.
-- A **Slide** may have **Frontmatter** immediately after its `---`. In v0 the only key is `layout`. Empty **Frontmatter** is omitted. `theme` is **Deck**-only.
+- A **Deck**'s opening **Frontmatter** holds `theme`, `appearance`, and `motion` in v0. The first `#` is the title; there is no `title` key. `appearance` is `light`, `dark`, or `auto`. Default is dark. `motion` is `auto` or `always`. Default is auto. `always` does not invent motion on a hard cut.
+- A **Deck** has one **Theme**. A **Theme** may be a single colour; travelling through a sequence of colours is optional.
+- A **Theme** paints through contained handles — colour, type, accents, and how connected motion looks — not by picking a **Layout**. A **Theme** does not turn **Motion** on or off.
+- **SpeechDeck** ships built-in **Themes**; at least one uses colours outside sRGB.
+- A **Background** does not consume a step of that travel; it keeps the current colour so **Looks** still have something to dim against. A Crop **Cell** still consumes a step.
+- A **Slide** may have **Frontmatter** immediately after its `---`. In v0 the only key is `layout`. Empty **Frontmatter** is omitted. `theme`, `appearance`, and `motion` are **Deck**-only.
 - A **Slide** is made of **Cells**. A blank line starts a new **Cell**. **Speech** and **Comments** do not occupy a **Cell**. "Block" is CommonMark's word, not ours.
 - Headings, tables, images, fenced code, block math, and **Embeds** appear on a **Slide** by themselves; paragraphs, lists and quotes remain **Speech** unless **Promotion** precedes them.
-- Fenced code is a **Cell**. When two **Slides** are connected, their code **Cells** pair by index; matching regions morph. A leftover **Cell**, and any code on a hard-cut, does not. There is no match id on the fence.
+- Fenced code is a **Cell**. When two **Slides** are connected, a heading with the same text persists, an image with the same src persists, and their code **Cells** pair by index; matching regions morph. A leftover **Cell**, and any code on a hard-cut, does not. Authors do not name the pairing. There is no match id on the fence.
 - An **Embed** is a fenced block with info string `embed` and a module specifier; optional YAML body for props. It is a **Cell**. YouTube and other framed pages are the same fence, pointing at an iframe guest (typically scaffold-supplied), not a second block type.
 - Images and **Embeds** are files in the repo, referenced by path; there is no media library.
 - A **Slide** has one **Layout**, chosen from **Cell** count and types. Cover is the talk-title **Layout**; **Crop** is an image mode — they are not the same word.
@@ -96,7 +111,19 @@ _Avoid_: style, filter, effect, frost
 >
 > **Dev:** "If I change the function on the next **Slide**, does the code morph?"
 > **Domain expert:** "If those **Slides** are connected, the first code **Cell** morphs into the first. There is no id on the fence."
+>
+> **Dev:** "Does every **Theme** travel through colours as I advance?"
+> **Domain expert:** "No. A **Theme** can be one colour for the whole **Deck**. Travel is optional."
+>
+> **Dev:** "If the **Slide** is a photo with a heading on it, does the colour still move?"
+> **Domain expert:** "That's a **Background**. The photo is the paint, so it keeps the current colour and doesn't spend a stop. A Crop **Cell** still spends one — you can see the travelling colour around it."
+>
+> **Dev:** "My laptop is in light mode. Does the talk follow that?"
+> **Domain expert:** "Only if the **Deck** set `appearance: auto`. Default is dark. `light` and `dark` ignore the laptop. A **Slide** does not override it."
+>
+> **Dev:** "My laptop asks for less motion. Does the talk go still?"
+> **Domain expert:** "Only if **Motion** is `auto`. `always` still runs connected motion. Unconnected **Slides** still hard-cut. A **Slide** does not override it."
 
 ## Flagged ambiguities
 
-- **theme vs template** — iA uses both words for different things; we currently use only "theme", possibly for both. Owned by [Theme model and the DOM contract themes style](https://github.com/MichaelBuss/speechdeck/issues/10).
+- **theme vs template** — resolved: there is no Template. **Theme** is the word. iA's `template.json` was inspector metadata we do not have.
