@@ -42,6 +42,10 @@ _Avoid_: v-mark
 A live web mount on a **Slide**; always a module specifier (a repo path or an importable JS URL) with serializable props. A guest may put an iframe inside the host element; the framework does not.
 _Avoid_: island, demo, widget, youtube (as a block type)
 
+**Region**:
+A named span inside a source file; a code **Cell** may show one instead of the whole file.
+_Avoid_: snippet, excerpt, line range, fold
+
 **Layout**:
 A named arrangement of **Cells** on a **Slide**. v0 ships Cover, Section, Solo, Split-2, Split-3, Grid, and Caption.
 _Avoid_: template, theme (those are not arrangements)
@@ -90,7 +94,9 @@ _Avoid_: animation, none, never, full, all, on
 - A **Slide** may have **Frontmatter** immediately after its `---`. In v0 the only key is `layout`. Empty **Frontmatter** is omitted. `theme`, `appearance`, and `motion` are **Deck**-only.
 - A **Slide** is made of **Cells**. A blank line starts a new **Cell**. **Speech** and **Comments** do not occupy a **Cell**. "Block" is CommonMark's word, not ours.
 - Headings, tables, images, fenced code, block math, and **Embeds** appear on a **Slide** by themselves; paragraphs, lists and quotes remain **Speech** unless **Promotion** precedes them.
-- Fenced code is a **Cell**. When two **Slides** are connected, a heading with the same text persists, an image with the same src persists, and their code **Cells** pair by index; matching regions morph. A leftover **Cell**, and any code on a hard-cut, does not. Authors do not name the pairing. There is no match id on the fence.
+- Fenced code is a **Cell**. When two **Slides** are connected, a heading with the same text persists, an image with the same src persists, and their code **Cells** pair by index; matched code morphs. A leftover **Cell**, and any code on a hard-cut, does not. Authors do not name the pairing. There is no match id on the fence.
+- A code **Cell**'s bytes are the fence body, or a path relative to the **Deck** — a file, or a **Region** of one. An **Embed** at that same path runs the file. Those bytes cannot drift. A **Region** is `#region name` … `#endregion` in that file; duplicate names in one file are an authoring error. A line range is not a **Region**. `#name` is only on the code fence; the **Embed** has no fragment.
+- A file-backed code **Cell** is spelled with the language, then the path, and an empty body: `ts ./demos/counter.ts` or `ts ./demos/counter.ts#adapter` on the fence info string. A body and a path together is a lint error. The `#region` / `#endregion` lines are not shown. A code **Cell** path is not a package name and not a URL.
 - An **Embed** is a fenced block with info string `embed` and a module specifier; optional YAML body for props. It is a **Cell**. YouTube and other framed pages are the same fence, pointing at an iframe guest (typically scaffold-supplied), not a second block type.
 - Images are files in the repo, referenced by path relative to the **Deck** file; there is no media library. An **Embed** specifier is the same kind of relative path, or a package name. There is no reserved embeds folder. A custom **Theme** is the same: a relative path from the **Deck**, or a package name.
 - A **Slide** has one **Layout**, chosen from **Cell** count and types. Cover is the talk-title **Layout**; **Crop** is an image mode — they are not the same word.
@@ -129,6 +135,9 @@ _Avoid_: animation, none, never, full, all, on
 >
 > **Dev:** "Where do I put the demo the **Embed** loads?"
 > **Domain expert:** "Next to the **Deck**, like an image — `./demos/counter.ts`. Or a package the repo already depends on. There is no special folder."
+>
+> **Dev:** "If I show that file's code next to the running **Embed**, and I edit the file, do they drift?"
+> **Domain expert:** "No — that's the file, not a second copy. A **Region** is a named span in that file, not line numbers. A package name is something you run, not something you highlight."
 
 ## Flagged ambiguities
 
