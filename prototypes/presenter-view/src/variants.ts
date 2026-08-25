@@ -36,7 +36,9 @@ function preview(thumb: Thumb, tag: string): string {
     <article class="preview" data-kind="${escape(thumb.kind)}">
       <span class="preview-tag">${escape(tag)}</span>
       <div class="preview-frame">
-        <div class="preview-stage">${thumb.visual}</div>
+        <div class="preview-sizer">
+          <div class="preview-stage">${thumb.visual}</div>
+        </div>
       </div>
     </article>`;
 }

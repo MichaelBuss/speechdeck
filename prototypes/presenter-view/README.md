@@ -10,7 +10,7 @@ Three **layout** variants, switchable via `?variant=`:
 
 B and C were the rejected shapes.
 
-Locked while grilling (all variants obey these): two compositions over the same panes (**Present** = click to open the audience window; **Rehearse** = don't); **Speech** of *this* **Slide** only; overflow scrolls; not mirrored; no auto-scroll; elapsed only; narrow viewports collapse previews to a strip so **Speech** stays on screen; a **Comment** never appears. The audience window reports `{ width, height }`; previews lay the **Slide** out at that size and scale it down. **Embeds** in the preview are inert.
+Locked while grilling (all variants obey these): two compositions over the same panes (**Present** = click to open the audience window; **Rehearse** = don't); **Speech** of *this* **Slide** only; overflow scrolls; not mirrored; no auto-scroll; elapsed only; narrow viewports collapse previews to a strip so **Speech** stays on screen; a **Comment** never appears. The audience window reports `{ width, height }`; previews contain-fit that rectangle (16:9 1280×720 until it reports). **Embeds** in the preview are inert. The **Presenter view** window can be any size — preview slots are leftover chrome, not a **Slide** viewport.
 
 ```sh
 cd prototypes/presenter-view

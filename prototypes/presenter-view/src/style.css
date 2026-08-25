@@ -246,9 +246,20 @@ html[data-view="audience"] .stage-wrap {
   min-height: 0;
   overflow: hidden;
   background: #1a1814;
+  display: grid;
+  place-items: center;
+}
+
+.preview-sizer {
+  position: relative;
+  overflow: hidden;
 }
 
 .preview-stage {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: top left;
   pointer-events: none;
 }
 
@@ -332,7 +343,7 @@ html[data-view="audience"] .stage-wrap {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 0.45rem;
-  min-height: 5.5rem;
+  min-height: 8.5rem;
 }
 
 .presenter[data-variant="B"] .speech {

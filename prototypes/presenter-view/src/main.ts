@@ -26,6 +26,8 @@ let origin = Date.now();
 let applyingRemote = false;
 let audience: Window | null = null;
 let audienceViewport: Viewport | undefined;
+const DEFAULT_VIEWPORT: Viewport = { width: 1280, height: 720 };
+const fitObserver = new ResizeObserver(() => applyFits());
 
 const sync = openSlideSync({
   onSlide(id) {
@@ -137,36 +139,42 @@ function postViewport(): void {
   sync.postViewport({ width: box.width, height: box.height });
 }
 
+function layoutViewport(): Viewport {
+  return audienceViewport ?? DEFAULT_VIEWPORT;
+}
+
 function applyFits(): void {
-  const layout = audienceViewport;
+  const layout = layoutViewport();
   for (const frame of stage.querySelectorAll(".preview-frame")) {
     if (!(frame instanceof HTMLElement)) continue;
+    const sizer = frame.querySelector(".preview-sizer");
     const inner = frame.querySelector(".preview-stage");
-    if (!(inner instanceof HTMLElement)) continue;
-    if (layout !== undefined) {
-      inner.style.width = `${layout.width}px`;
-      inner.style.height = `${layout.height}px`;
-      const sx = frame.clientWidth / layout.width;
-      const sy = frame.clientHeight / layout.height;
-      const s = Math.min(sx, sy);
-      inner.style.position = "absolute";
-      inner.style.left = "50%";
-      inner.style.top = "50%";
-      inner.style.transform = `translate(-50%, -50%) scale(${s})`;
-      inner.style.transformOrigin = "center center";
-    } else {
-      inner.style.width = "100%";
-      inner.style.height = "100%";
-      inner.style.position = "relative";
-      inner.style.left = "auto";
-      inner.style.top = "auto";
-      inner.style.transform = "none";
-    }
+    if (!(sizer instanceof HTMLElement) || !(inner instanceof HTMLElement)) continue;
+    const fw = frame.clientWidth;
+    const fh = frame.clientHeight;
+    if (fw < 1 || fh < 1) continue;
+    const s = Math.min(fw / layout.width, fh / layout.height);
+    sizer.style.width = `${layout.width * s}px`;
+    sizer.style.height = `${layout.height * s}px`;
+    inner.style.width = `${layout.width}px`;
+    inner.style.height = `${layout.height}px`;
+    inner.style.transform = `scale(${s})`;
   }
 }
 
+function watchFrames(): void {
+  fitObserver.disconnect();
+  for (const frame of stage.querySelectorAll(".preview-frame")) {
+    if (frame instanceof Element) fitObserver.observe(frame);
+  }
+  applyFits();
+  requestAnimationFrame(() => applyFits());
+}
+
 function previewLabel(): string {
-  if (audienceViewport === undefined) return "box";
+  if (audienceViewport === undefined) {
+    return `${DEFAULT_VIEWPORT.width}×${DEFAULT_VIEWPORT.height} default`;
+  }
   return `${Math.round(audienceViewport.width)}×${Math.round(audienceViewport.height)}`;
 }
 
@@ -205,7 +213,7 @@ function render(): void {
     current: thumbOf(slide),
     ...(next !== undefined ? { next: thumbOf(next) } : {}),
   });
-  applyFits();
+  watchFrames();
 
   const spec = variants[variant];
   const comment = slide.comment === undefined ? "none on this Slide" : "hidden (not in Presenter view)";
@@ -223,7 +231,7 @@ function render(): void {
     <span><kbd>present</kbd> Open audience window · <kbd>rehearse</kbd> this window only</span>
     <span><kbd>keys</kbd> ←→ slides · [ ] variants · click clock to reset</span>
     <span><kbd>narrow</kbd> Phone preset — Speech stays, previews become a strip</span>
-    <span><kbd>preview</kbd> audience size, laid out then scaled · Embeds inert</span>
+    <span><kbd>preview</kbd> contain-fit audience size · 16:9 default until Present reports · Embeds inert</span>
   `;
   presetsEl.innerHTML = [
     ...PRESETS.map(
