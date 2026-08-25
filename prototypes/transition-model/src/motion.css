@@ -1,0 +1,32 @@
+/*
+  PROTOTYPE — motion. Theme-owned via view-transition-class.
+  Engine only starts the transition and assigns names; duration/easing live here.
+*/
+
+::view-transition-group(*) {
+  animation-duration: 0.55s;
+}
+
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 0.4s;
+}
+
+html[data-theme-motion="on"]::view-transition-group(.heading) {
+  animation-duration: 0.5s;
+  animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+html[data-theme-motion="on"]::view-transition-group(.code) {
+  animation-duration: 0.7s;
+  animation-timing-function: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+html[data-theme-motion="on"]::view-transition-group(.figure) {
+  animation-duration: 0.6s;
+}
+
+html[data-theme-motion="off"]::view-transition-group(*) {
+  animation-duration: 0.55s;
+  animation-timing-function: ease;
+}
