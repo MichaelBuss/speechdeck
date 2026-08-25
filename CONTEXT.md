@@ -79,7 +79,7 @@ _Avoid_: animation, none, never, full, all, on
 
 ## Relationships
 
-- **SpeechDeck** is the framework; a **Deck** is one presentation written in it.
+- **SpeechDeck** is the framework; a **Deck** is one presentation written in it. A **Deck** lives in a repo that depends on **SpeechDeck**; it is not a file a binary is pointed at.
 - **Speech** is the only presenter-facing channel; there is no Note.
 - A **Deck** is a sequence of **Slides**; each **Slide** carries its **Speech**. A `---` starts a new **Slide**. Extra blank lines do not.
 - A **Deck**'s opening **Frontmatter** holds `theme`, `appearance`, and `motion` in v0. The first `#` is the title; there is no `title` key. `appearance` is `light`, `dark`, or `auto`. Default is dark. `motion` is `auto` or `always`. Default is auto. `always` does not invent motion on a hard cut.
@@ -92,7 +92,7 @@ _Avoid_: animation, none, never, full, all, on
 - Headings, tables, images, fenced code, block math, and **Embeds** appear on a **Slide** by themselves; paragraphs, lists and quotes remain **Speech** unless **Promotion** precedes them.
 - Fenced code is a **Cell**. When two **Slides** are connected, a heading with the same text persists, an image with the same src persists, and their code **Cells** pair by index; matching regions morph. A leftover **Cell**, and any code on a hard-cut, does not. Authors do not name the pairing. There is no match id on the fence.
 - An **Embed** is a fenced block with info string `embed` and a module specifier; optional YAML body for props. It is a **Cell**. YouTube and other framed pages are the same fence, pointing at an iframe guest (typically scaffold-supplied), not a second block type.
-- Images and **Embeds** are files in the repo, referenced by path; there is no media library.
+- Images are files in the repo, referenced by path relative to the **Deck** file; there is no media library. An **Embed** specifier is the same kind of relative path, or a package name. There is no reserved embeds folder. A custom **Theme** is the same: a relative path from the **Deck**, or a package name.
 - A **Slide** has one **Layout**, chosen from **Cell** count and types. Cover is the talk-title **Layout**; **Crop** is an image mode — they are not the same word.
 - Auto **Layout**: H1-only → Cover; one heading H2+ → Section; one **Cell** otherwise → Solo; two **Cells** → Split-2, except H4 + image (either order) → Caption; three → Split-3; four or more → Grid. A **Background** is not a **Cell** and does not bump the count.
 - A **Slide** **Frontmatter** `layout:` key, when present, wins. Value is one of `cover`, `section`, `solo`, `split-2`, `split-3`, `grid`, `caption`. An impossible override is a lint error; auto still renders. The pick does not change with the viewport — CSS adapts the same **Layout**.
@@ -123,6 +123,12 @@ _Avoid_: animation, none, never, full, all, on
 >
 > **Dev:** "My laptop asks for less motion. Does the talk go still?"
 > **Domain expert:** "Only if **Motion** is `auto`. `always` still runs connected motion. Unconnected **Slides** still hard-cut. A **Slide** does not override it."
+>
+> **Dev:** "Can I point SpeechDeck at a Markdown file and present?"
+> **Domain expert:** "No — the **Deck** is a document, but it lives in a repo that depends on **SpeechDeck**. An **Embed** is a module; a lone file has nowhere for that module to live."
+>
+> **Dev:** "Where do I put the demo the **Embed** loads?"
+> **Domain expert:** "Next to the **Deck**, like an image — `./demos/counter.ts`. Or a package the repo already depends on. There is no special folder."
 
 ## Flagged ambiguities
 
