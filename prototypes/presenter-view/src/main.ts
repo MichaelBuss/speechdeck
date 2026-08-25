@@ -1,5 +1,5 @@
 import { slides, type DemoSlide } from "./slides.ts";
-import { openSlideSync } from "./sync.ts";
+import { openSlideSync, type Viewport } from "./sync.ts";
 import { renderVariant, VARIANT_IDS, variants, type VariantId } from "./variants.ts";
 import "./style.css";
 
@@ -7,6 +7,7 @@ const PRESETS = [
   { id: "fill", label: "Fill", width: 0, height: 0 },
   { id: "laptop", label: "Laptop 1280×800", width: 1280, height: 800 },
   { id: "projector", label: "16:9 1280×720", width: 1280, height: 720 },
+  { id: "four-three", label: "4:3 1024×768", width: 1024, height: 768 },
   { id: "square", label: "Square 800×800", width: 800, height: 800 },
   { id: "phone", label: "Phone 390×844", width: 390, height: 844 },
 ] as const;
@@ -24,14 +25,26 @@ let view: "presenter" | "audience" = "presenter";
 let origin = Date.now();
 let applyingRemote = false;
 let audience: Window | null = null;
+let audienceViewport: Viewport | undefined;
 
-const sync = openSlideSync((id) => {
-  const found = slides.findIndex((s) => s.id === id);
-  if (found < 0 || found === index) return;
-  applyingRemote = true;
-  index = found;
-  render();
-  applyingRemote = false;
+const sync = openSlideSync({
+  onSlide(id) {
+    const found = slides.findIndex((s) => s.id === id);
+    if (found < 0 || found === index) return;
+    applyingRemote = true;
+    index = found;
+    render();
+    applyingRemote = false;
+  },
+  onViewport(viewport) {
+    if (view === "audience") return;
+    if (audienceViewport?.width === viewport.width && audienceViewport.height === viewport.height) return;
+    audienceViewport = viewport;
+    if (view === "presenter") {
+      updatePreviewHud();
+      applyFits();
+    }
+  },
 });
 
 app.innerHTML = `
@@ -104,15 +117,62 @@ function formatElapsed(ms: number): string {
 }
 
 function thumbOf(slide: DemoSlide) {
-  return { label: slide.id, kicker: slide.kicker, title: slide.title, kind: slide.kind };
+  return { kicker: slide.kicker, title: slide.title, kind: slide.kind, visual: renderSlideVisual(slide) };
 }
 
-function renderAudience(slide: DemoSlide): string {
+function renderSlideVisual(slide: DemoSlide): string {
+  const embed =
+    slide.kind === "split" ? `<div class="embed-inert" aria-hidden="true">Embed</div>` : "";
   return `
     <div class="audience" data-kind="${slide.kind}">
       <p class="kicker">${slide.kicker}</p>
       <h1>${slide.title}</h1>
+      ${embed}
     </div>`;
+}
+
+function postViewport(): void {
+  const box = stage.getBoundingClientRect();
+  if (!(box.width > 0) || !(box.height > 0)) return;
+  sync.postViewport({ width: box.width, height: box.height });
+}
+
+function applyFits(): void {
+  const layout = audienceViewport;
+  for (const frame of stage.querySelectorAll(".preview-frame")) {
+    if (!(frame instanceof HTMLElement)) continue;
+    const inner = frame.querySelector(".preview-stage");
+    if (!(inner instanceof HTMLElement)) continue;
+    if (layout !== undefined) {
+      inner.style.width = `${layout.width}px`;
+      inner.style.height = `${layout.height}px`;
+      const sx = frame.clientWidth / layout.width;
+      const sy = frame.clientHeight / layout.height;
+      const s = Math.min(sx, sy);
+      inner.style.position = "absolute";
+      inner.style.left = "50%";
+      inner.style.top = "50%";
+      inner.style.transform = `translate(-50%, -50%) scale(${s})`;
+      inner.style.transformOrigin = "center center";
+    } else {
+      inner.style.width = "100%";
+      inner.style.height = "100%";
+      inner.style.position = "relative";
+      inner.style.left = "auto";
+      inner.style.top = "auto";
+      inner.style.transform = "none";
+    }
+  }
+}
+
+function previewLabel(): string {
+  if (audienceViewport === undefined) return "box";
+  return `${Math.round(audienceViewport.width)}×${Math.round(audienceViewport.height)}`;
+}
+
+function updatePreviewHud(): void {
+  const el = hud.querySelector("#hud-preview");
+  if (el) el.textContent = previewLabel();
 }
 
 function render(): void {
@@ -121,17 +181,20 @@ function render(): void {
   const next = slides[index + 1];
   applyPreset();
   writeUrl();
-  if (!applyingRemote) sync.post(slide.id);
+  if (!applyingRemote) sync.postSlide(slide.id);
 
   document.documentElement.dataset["view"] = view;
   document.title = view === "audience" ? "Audience — Slide" : "PROTOTYPE — presenter view";
 
   if (view === "audience") {
-    hud.innerHTML = `<span>audience <strong>${slide.title}</strong></span><span>slide <strong>${index + 1}/${slides.length}</strong></span>`;
-    contract.innerHTML = `<span><kbd>audience</kbd> the Slide only · Speech is in the other window · ←→ navigates both</span>`;
-    presetsEl.innerHTML = "";
+    hud.innerHTML = `<span>audience <strong>${slide.title}</strong></span><span>slide <strong>${index + 1}/${slides.length}</strong></span><span>size <strong id="hud-preview">${Math.round(stage.getBoundingClientRect().width)}×${Math.round(stage.getBoundingClientRect().height)}</strong></span>`;
+    contract.innerHTML = `<span><kbd>audience</kbd> the Slide only · Speech is in the other window · ←→ navigates both · presets change the reported size</span>`;
+    presetsEl.innerHTML = PRESETS.map(
+      (p) => `<button type="button" data-preset="${p.id}" aria-pressed="${p.id === preset}">${p.label}</button>`,
+    ).join("");
     switcher.innerHTML = "";
-    stage.innerHTML = renderAudience(slide);
+    stage.innerHTML = renderSlideVisual(slide);
+    postViewport();
     return;
   }
 
@@ -142,21 +205,25 @@ function render(): void {
     current: thumbOf(slide),
     ...(next !== undefined ? { next: thumbOf(next) } : {}),
   });
+  applyFits();
 
   const spec = variants[variant];
   const comment = slide.comment === undefined ? "none on this Slide" : "hidden (not in Presenter view)";
+  const presenting = audience && !audience.closed ? "open" : "rehearse";
   hud.innerHTML = `
     <span>variant <strong>${variant} — ${spec.name}</strong></span>
     <span>slide <strong>${index + 1}/${slides.length} ${slide.title}</strong></span>
     <span>elapsed <strong id="hud-elapsed">${elapsed}</strong></span>
     <span>comment <strong>${comment}</strong></span>
     <span>mirror <strong>no</strong></span>
-    <span>audience <strong>${audience && !audience.closed ? "open" : "rehearse"}</strong></span>
+    <span>audience <strong>${presenting}</strong></span>
+    <span>preview <strong id="hud-preview">${previewLabel()}</strong></span>
   `;
   contract.innerHTML = `
     <span><kbd>present</kbd> Open audience window · <kbd>rehearse</kbd> this window only</span>
     <span><kbd>keys</kbd> ←→ slides · [ ] variants · click clock to reset</span>
     <span><kbd>narrow</kbd> Phone preset — Speech stays, previews become a strip</span>
+    <span><kbd>preview</kbd> audience size, laid out then scaled · Embeds inert</span>
   `;
   presetsEl.innerHTML = [
     ...PRESETS.map(
@@ -192,6 +259,14 @@ function openAudience(): void {
 }
 
 function tickClock(): void {
+  if (audience?.closed) {
+    audience = null;
+    audienceViewport = undefined;
+    if (view === "presenter") {
+      updatePreviewHud();
+      applyFits();
+    }
+  }
   if (view === "audience") return;
   const elapsed = formatElapsed(Date.now() - origin);
   const hudElapsed = hud.querySelector("#hud-elapsed");
@@ -201,7 +276,8 @@ function tickClock(): void {
 }
 
 presetsEl.addEventListener("click", (event) => {
-  const btn = event.target;
+  const raw = event.target;
+  const btn = raw instanceof Element ? raw.closest("button") : null;
   if (!(btn instanceof HTMLElement)) return;
   if (btn.dataset["openAudience"] === "1") {
     openAudience();
@@ -256,3 +332,14 @@ window.addEventListener("beforeunload", () => sync.close());
 readUrl();
 render();
 window.setInterval(tickClock, 250);
+
+new ResizeObserver(() => {
+  if (view === "audience") {
+    postViewport();
+    const el = hud.querySelector("#hud-preview");
+    const box = stage.getBoundingClientRect();
+    if (el) el.textContent = `${Math.round(box.width)}×${Math.round(box.height)}`;
+    return;
+  }
+  applyFits();
+}).observe(stage);

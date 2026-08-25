@@ -15,10 +15,10 @@ export type PaneModel = {
 };
 
 export type Thumb = {
-  label: string;
   kicker: string;
   title: string;
   kind: string;
+  visual: string;
 };
 
 export function renderVariant(id: VariantId, model: PaneModel): string {
@@ -35,8 +35,9 @@ function preview(thumb: Thumb, tag: string): string {
   return `
     <article class="preview" data-kind="${escape(thumb.kind)}">
       <span class="preview-tag">${escape(tag)}</span>
-      <p class="preview-kicker">${escape(thumb.kicker)}</p>
-      <h2>${escape(thumb.title)}</h2>
+      <div class="preview-frame">
+        <div class="preview-stage">${thumb.visual}</div>
+      </div>
     </article>`;
 }
 

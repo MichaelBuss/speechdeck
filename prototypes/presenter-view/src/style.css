@@ -234,28 +234,45 @@ html[data-view="audience"] .stage-wrap {
   min-height: 0;
   overflow: hidden;
   border: 1px solid rgb(244 241 234 / 0.14);
-  background: #1c1914;
-  padding: 0.7rem 0.75rem 0.8rem;
+  background: #0e0c0a;
+  padding: 0.4rem;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 0.3rem;
 }
 
-.preview h2 {
-  margin: 0;
-  font-size: 0.95rem;
-  line-height: 1.2;
-  font-weight: 650;
+.preview-frame {
+  position: relative;
+  min-height: 0;
+  overflow: hidden;
+  background: #1a1814;
 }
 
-.preview-kicker,
-.preview-tag {
-  margin: 0 0 0.25rem;
-  font-size: 0.62rem;
-  letter-spacing: 0.1em;
+.preview-stage {
+  pointer-events: none;
+}
+
+.preview-stage .audience {
+  width: 100%;
+  height: 100%;
+}
+
+.embed-inert {
+  margin-top: 1.2cqi;
+  padding: 1.4cqi 2cqi;
+  border: 1px dashed rgb(244 241 234 / 0.28);
+  color: #9a8b73;
+  font-size: clamp(0.7rem, 2.2cqi, 1rem);
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: #b7a88c;
 }
 
 .preview-tag {
   display: block;
+  margin: 0;
+  font-size: 0.62rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
   color: #8ad0a0;
 }
 
@@ -370,10 +387,6 @@ html[data-view="audience"] .stage-wrap {
   .presenter[data-variant="A"] .clock {
     justify-self: center;
     align-self: center;
-  }
-
-  .presenter[data-variant="A"] .preview h2 {
-    font-size: 0.78rem;
   }
 
   .presenter[data-variant="B"] .chrome {
