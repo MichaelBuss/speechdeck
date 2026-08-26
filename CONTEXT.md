@@ -114,7 +114,7 @@ _Avoid_: view, snapshot, iframe, page
 - An **Arrival** is the showing of one **Slide**, and may name the **Slide** just left. First paint, and a deep link that is not a sequential step, have no origin. A **Frame** is that **Slide** painted for this **Arrival**.
 - Connected motion, identity names, and code pairing run only on that document-order edge — sequential next, and sequential back. First paint, a deep link, and a skip that jumps over a **Slide** are a **hard cut** even if the destination says `enter: connected`. A **Theme**'s travel *t* does not reset on a **hard cut**; the colour snaps.
 - A **Slide** is made of **Cells**. A blank line starts a new **Cell**. **Speech** and **Comments** do not occupy a **Cell**. "Block" is CommonMark's word, not ours.
-- Headings, tables, images, fenced code, block math, and **Embeds** appear on a **Slide** by themselves; paragraphs, lists and quotes remain **Speech** unless **Promotion** precedes them.
+- Headings, tables, images, fenced code, and **Embeds** appear on a **Slide** by themselves; paragraphs, lists and quotes remain **Speech** unless **Promotion** precedes them. There is no math **Cell**.
 - Fenced code is a **Cell**. When two **Slides** are connected, a heading with the same text persists, an image with the same src persists, and their code **Cells** pair by index; matched code morphs. A leftover **Cell**, and any code on a hard-cut, does not. Authors do not name the pairing. There is no match id on the fence.
 - A code **Cell**'s bytes are the fence body, or a path relative to the **Deck** — a file, or a **Region** of one. An **Embed** at that same path runs the file. Those bytes cannot drift. A **Region** is `#region name` … `#endregion` in that file; duplicate names in one file are an authoring error. A line range is not a **Region**. `#name` is only on the code fence; the **Embed** has no fragment.
 - A file-backed code **Cell** is spelled with the language, then the path, and an empty body: `ts ./demos/counter.ts` or `ts ./demos/counter.ts#adapter` on the fence info string. A body and a path together is a lint error. The `#region` / `#endregion` lines are not shown. A code **Cell** path is not a package name and not a URL.
@@ -188,3 +188,5 @@ _Avoid_: view, snapshot, iframe, page
 - **cursor** — resolved: the public name is **Arrival**. Cursor is a mouse, a caret, and "where we are" in the same talk.
 - **frame vs iframe** — resolved: a **Frame** is a paint. An iframe is a guest inside an **Embed**.
 - **Slide address** — resolved: 1-based place in the **Deck**, as a string (`"1"`, `"2"`). Not heading slug (morphing **Slides** share a heading). Not a Frontmatter `id`.
+- **block math** — resolved: not a **Cell**. Equations are not a first-class unit in v0.
+- **plugin / extension** — resolved: there is no Plugin. The third-party seam is **Embed**. A diagram is an image or an **Embed**, not a **Cell** kind.

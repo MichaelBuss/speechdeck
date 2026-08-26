@@ -97,7 +97,6 @@ export type Block =
   | ImageBlock
   | EmbedBlock
   | TableBlock
-  | MathBlock
   | ProseBlock;
 
 export type HeadingBlock = {
@@ -136,7 +135,6 @@ export type EmbedBlock = {
 };
 
 export type TableBlock = { kind: "table"; html: string };
-export type MathBlock = { kind: "math"; tex: string; html: string };
 export type ProseBlock = { kind: "prose"; html: string };
 
 export type Arrival = {
