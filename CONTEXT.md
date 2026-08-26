@@ -85,6 +85,10 @@ Light, dark, or auto. A **Deck** picks one; a **Theme** provides both light and 
 Auto or always. A **Deck** picks one. Default is auto. Auto follows the environment's motion preference; always runs connected motion regardless.
 _Avoid_: animation, none, never, full, all, on
 
+**Hard cut**:
+Arrival at a **Slide** with no connected motion.
+_Avoid_: jump, wipe, none, disconnect, Connection
+
 ## Relationships
 
 - **SpeechDeck** is the framework; a **Deck** is one presentation written in it. A **Deck** lives in a repo that depends on **SpeechDeck**; it is not a file a binary is pointed at.
@@ -96,7 +100,9 @@ _Avoid_: animation, none, never, full, all, on
 - A **Theme** paints through contained handles — colour, type, accents, and how connected motion looks — not by picking a **Layout**. The framework's CSS maps those handles onto the public DOM and paints **Looks** and **Marks**; a **Theme** that is only `theme.json` still looks like a **Deck**. `theme.css` is optional extras. A **Theme** does not turn **Motion** on or off.
 - **SpeechDeck** ships three built-in **Themes**: Harbour, Ink, and Signal. They live as subpaths of `@speechdeck/themes`. Harbour and Signal travel; Ink is still. Signal is the look that uses colours outside sRGB. A third-party **Theme** is any package (or folder) that contains `theme.json`; `theme.css` is optional. There is no naming convention it must follow.
 - A **Background** does not consume a step of that travel; it keeps the current colour so **Looks** still have something to dim against. A Crop **Cell** still consumes a step.
-- A **Slide** may have **Frontmatter** immediately after its `---`. In v0 the only key is `layout`. Empty **Frontmatter** is omitted. `theme`, `appearance`, and `motion` are **Deck**-only.
+- A **Slide** may have **Frontmatter** immediately after its `---`. In v0 the keys are `layout` and `enter`. Empty **Frontmatter** is omitted. `theme`, `appearance`, and `motion` are **Deck**-only.
+- `enter` is `cut` or `connected`. Default is cut. A bare `---` is a **hard cut**. `enter: connected` on the arriving **Slide** is the opt-in: this **Slide** is connected to the one before it in the **Deck**. `enter: cut` is legal and redundant. `enter: connected` on the first **Slide** is an authoring error. There is no **Connection** noun.
+- Connected motion, identity names, and code pairing run only on that document-order edge — sequential next, and sequential back. First paint, a deep link, and a skip that jumps over a **Slide** are a **hard cut** even if the destination says `enter: connected`. A **Theme**'s travel *t* does not reset on a **hard cut**; the colour snaps.
 - A **Slide** is made of **Cells**. A blank line starts a new **Cell**. **Speech** and **Comments** do not occupy a **Cell**. "Block" is CommonMark's word, not ours.
 - Headings, tables, images, fenced code, block math, and **Embeds** appear on a **Slide** by themselves; paragraphs, lists and quotes remain **Speech** unless **Promotion** precedes them.
 - Fenced code is a **Cell**. When two **Slides** are connected, a heading with the same text persists, an image with the same src persists, and their code **Cells** pair by index; matched code morphs. A leftover **Cell**, and any code on a hard-cut, does not. Authors do not name the pairing. There is no match id on the fence.
@@ -125,6 +131,12 @@ _Avoid_: animation, none, never, full, all, on
 >
 > **Dev:** "If I change the function on the next **Slide**, does the code morph?"
 > **Domain expert:** "If those **Slides** are connected, the first code **Cell** morphs into the first. There is no id on the fence."
+>
+> **Dev:** "How do I connect them?"
+> **Domain expert:** "On the arriving **Slide**: `enter: connected`. A bare `---` is a **hard cut**. You do not name a Connection."
+>
+> **Dev:** "If I jump from the Cover to a connected **Slide**, does it morph?"
+> **Domain expert:** "No. Connected is the edge from the previous **Slide** in the **Deck**. A skip is a **hard cut**."
 >
 > **Dev:** "Does every **Theme** travel through colours as I advance?"
 > **Domain expert:** "No. Travel is optional. Harbour and Signal travel; Ink is still — one colour for the whole **Deck**."
@@ -159,3 +171,4 @@ _Avoid_: animation, none, never, full, all, on
 ## Flagged ambiguities
 
 - **theme vs template** — resolved: there is no Template. **Theme** is the word. iA's `template.json` was inspector metadata we do not have.
+- **Connection** — resolved: not a glossary noun. "Connected" is an adjective on a pair of **Slides**. The authoring key is `enter`.
