@@ -86,8 +86,16 @@ Auto or always. A **Deck** picks one. Default is auto. Auto follows the environm
 _Avoid_: animation, none, never, full, all, on
 
 **Hard cut**:
-Arrival at a **Slide** with no connected motion.
+An **Arrival** that does not run connected motion.
 _Avoid_: jump, wipe, none, disconnect, Connection
+
+**Arrival**:
+The showing of one **Slide**, optionally from another. First paint has no origin.
+_Avoid_: cursor, edge, navigation, from/to
+
+**Frame**:
+One paint of a **Slide** for an **Arrival**: its **Layout**, hard cut or connected, travel, **Speech**, and the next **Slide**.
+_Avoid_: view, snapshot, iframe, page
 
 ## Relationships
 
@@ -95,6 +103,7 @@ _Avoid_: jump, wipe, none, disconnect, Connection
 - **Speech** is the only presenter-facing channel; there is no Note. The audience sees the **Slide**; the speaker sees **Presenter view**.
 - **Presenter view** reflows to its viewport; it is not a fixed canvas. This **Slide**'s **Speech** is the primary surface; previews of this **Slide** and the next are secondary. **Presenter view** shows this **Slide**'s **Speech** only; advance replaces it. Overflow scrolls. It is not mirrored. A preview of a **Slide** is that **Slide** as the audience viewport sees it — laid out at the audience size, then scaled to fit the preview slot. The **Presenter view** window is not a **Slide** viewport. An **Embed** in a preview is not live.
 - A **Deck** is a sequence of **Slides**; each **Slide** carries its **Speech**. A `---` starts a new **Slide**. Extra blank lines do not.
+- A **Slide** is addressed by its 1-based place in the **Deck**. The first **Slide** is `1`. Two **Slides** may share a heading; they do not share an address. There is no `id` **Frontmatter** key.
 - A **Deck**'s opening **Frontmatter** holds `theme`, `appearance`, and `motion` in v0. The first `#` is the title; there is no `title` key. `theme` is a specifier and is required. `appearance` is `light`, `dark`, or `auto`. Default is dark. `motion` is `auto` or `always`. Default is auto. `always` does not invent motion on a hard cut.
 - A **Deck** has one **Theme**. A **Theme** may be a single colour; travelling through a sequence of colours is optional.
 - A **Theme** paints through contained handles — colour, type, accents, and how connected motion looks — not by picking a **Layout**. The framework's CSS maps those handles onto the public DOM and paints **Looks** and **Marks**; a **Theme** that is only `theme.json` still looks like a **Deck**. `theme.css` is optional extras. A **Theme** does not turn **Motion** on or off.
@@ -102,6 +111,7 @@ _Avoid_: jump, wipe, none, disconnect, Connection
 - A **Background** does not consume a step of that travel; it keeps the current colour so **Looks** still have something to dim against. A Crop **Cell** still consumes a step.
 - A **Slide** may have **Frontmatter** immediately after its `---`. In v0 the keys are `layout` and `enter`. Empty **Frontmatter** is omitted. `theme`, `appearance`, and `motion` are **Deck**-only.
 - `enter` is `cut` or `connected`. Default is cut. A bare `---` is a **hard cut**. `enter: connected` on the arriving **Slide** is the opt-in: this **Slide** is connected to the one before it in the **Deck**. `enter: cut` is legal and redundant. `enter: connected` on the first **Slide** is an authoring error. There is no **Connection** noun.
+- An **Arrival** is the showing of one **Slide**, and may name the **Slide** just left. First paint, and a deep link that is not a sequential step, have no origin. A **Frame** is that **Slide** painted for this **Arrival**.
 - Connected motion, identity names, and code pairing run only on that document-order edge — sequential next, and sequential back. First paint, a deep link, and a skip that jumps over a **Slide** are a **hard cut** even if the destination says `enter: connected`. A **Theme**'s travel *t* does not reset on a **hard cut**; the colour snaps.
 - A **Slide** is made of **Cells**. A blank line starts a new **Cell**. **Speech** and **Comments** do not occupy a **Cell**. "Block" is CommonMark's word, not ours.
 - Headings, tables, images, fenced code, block math, and **Embeds** appear on a **Slide** by themselves; paragraphs, lists and quotes remain **Speech** unless **Promotion** precedes them.
@@ -119,7 +129,7 @@ _Avoid_: jump, wipe, none, disconnect, Connection
 - A `background` title makes that image a **Background**: it drops out of the **Cell** count, so a heading on a photo is still Cover or Section, not Split.
 - `<!--on-->` is reserved for **Promotion**; any other HTML comment is a **Comment**.
 - A **Mark** is spelled `<mark>` or `<mark data-mark="circle">`. Types: `underline`, `circle`, `highlight`, `box`, `strike-through`. Default type is `underline`. **Marks** are not used inside fenced code.
-- The source of a **Deck** is CommonMark Markdown with YAML **Frontmatter** — not MDX, and not TypeScript.
+- The source of a **Deck** is CommonMark Markdown with YAML **Frontmatter** — not MDX, and not TypeScript. What a **Slide** shows is HTML produced from that source; there is no Markdown AST in the public model.
 
 ## Example dialogue
 
@@ -136,7 +146,10 @@ _Avoid_: jump, wipe, none, disconnect, Connection
 > **Domain expert:** "On the arriving **Slide**: `enter: connected`. A bare `---` is a **hard cut**. You do not name a Connection."
 >
 > **Dev:** "If I jump from the Cover to a connected **Slide**, does it morph?"
-> **Domain expert:** "No. Connected is the edge from the previous **Slide** in the **Deck**. A skip is a **hard cut**."
+> **Domain expert:** "No. That's still an **Arrival**. Connected is the edge from the previous **Slide** in the **Deck**. A skip is a **hard cut**."
+>
+> **Dev:** "Can I deep-link to the createDeck heading?"
+> **Domain expert:** "To `/3`, if that's where it sits. The heading is not the address — two connected **Slides** can share a heading."
 >
 > **Dev:** "Does every **Theme** travel through colours as I advance?"
 > **Domain expert:** "No. Travel is optional. Harbour and Signal travel; Ink is still — one colour for the whole **Deck**."
@@ -172,3 +185,6 @@ _Avoid_: jump, wipe, none, disconnect, Connection
 
 - **theme vs template** — resolved: there is no Template. **Theme** is the word. iA's `template.json` was inspector metadata we do not have.
 - **Connection** — resolved: not a glossary noun. "Connected" is an adjective on a pair of **Slides**. The authoring key is `enter`.
+- **cursor** — resolved: the public name is **Arrival**. Cursor is a mouse, a caret, and "where we are" in the same talk.
+- **frame vs iframe** — resolved: a **Frame** is a paint. An iframe is a guest inside an **Embed**.
+- **Slide address** — resolved: 1-based place in the **Deck**, as a string (`"1"`, `"2"`). Not heading slug (morphing **Slides** share a heading). Not a Frontmatter `id`.
