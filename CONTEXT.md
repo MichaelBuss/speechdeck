@@ -91,10 +91,10 @@ _Avoid_: animation, none, never, full, all, on
 - **Speech** is the only presenter-facing channel; there is no Note. The audience sees the **Slide**; the speaker sees **Presenter view**.
 - **Presenter view** reflows to its viewport; it is not a fixed canvas. This **Slide**'s **Speech** is the primary surface; previews of this **Slide** and the next are secondary. **Presenter view** shows this **Slide**'s **Speech** only; advance replaces it. Overflow scrolls. It is not mirrored. A preview of a **Slide** is that **Slide** as the audience viewport sees it — laid out at the audience size, then scaled to fit the preview slot. The **Presenter view** window is not a **Slide** viewport. An **Embed** in a preview is not live.
 - A **Deck** is a sequence of **Slides**; each **Slide** carries its **Speech**. A `---` starts a new **Slide**. Extra blank lines do not.
-- A **Deck**'s opening **Frontmatter** holds `theme`, `appearance`, and `motion` in v0. The first `#` is the title; there is no `title` key. `appearance` is `light`, `dark`, or `auto`. Default is dark. `motion` is `auto` or `always`. Default is auto. `always` does not invent motion on a hard cut.
+- A **Deck**'s opening **Frontmatter** holds `theme`, `appearance`, and `motion` in v0. The first `#` is the title; there is no `title` key. `theme` is a specifier and is required. `appearance` is `light`, `dark`, or `auto`. Default is dark. `motion` is `auto` or `always`. Default is auto. `always` does not invent motion on a hard cut.
 - A **Deck** has one **Theme**. A **Theme** may be a single colour; travelling through a sequence of colours is optional.
-- A **Theme** paints through contained handles — colour, type, accents, and how connected motion looks — not by picking a **Layout**. A **Theme** does not turn **Motion** on or off.
-- **SpeechDeck** ships built-in **Themes**; at least one uses colours outside sRGB.
+- A **Theme** paints through contained handles — colour, type, accents, and how connected motion looks — not by picking a **Layout**. The framework's CSS maps those handles onto the public DOM and paints **Looks** and **Marks**; a **Theme** that is only `theme.json` still looks like a **Deck**. `theme.css` is optional extras. A **Theme** does not turn **Motion** on or off.
+- **SpeechDeck** ships built-in **Themes**; at least one uses colours outside sRGB. They live as subpaths of `@speechdeck/themes`. A third-party **Theme** is any package (or folder) that contains `theme.json`; `theme.css` is optional. There is no naming convention it must follow.
 - A **Background** does not consume a step of that travel; it keeps the current colour so **Looks** still have something to dim against. A Crop **Cell** still consumes a step.
 - A **Slide** may have **Frontmatter** immediately after its `---`. In v0 the only key is `layout`. Empty **Frontmatter** is omitted. `theme`, `appearance`, and `motion` are **Deck**-only.
 - A **Slide** is made of **Cells**. A blank line starts a new **Cell**. **Speech** and **Comments** do not occupy a **Cell**. "Block" is CommonMark's word, not ours.
@@ -103,7 +103,7 @@ _Avoid_: animation, none, never, full, all, on
 - A code **Cell**'s bytes are the fence body, or a path relative to the **Deck** — a file, or a **Region** of one. An **Embed** at that same path runs the file. Those bytes cannot drift. A **Region** is `#region name` … `#endregion` in that file; duplicate names in one file are an authoring error. A line range is not a **Region**. `#name` is only on the code fence; the **Embed** has no fragment.
 - A file-backed code **Cell** is spelled with the language, then the path, and an empty body: `ts ./demos/counter.ts` or `ts ./demos/counter.ts#adapter` on the fence info string. A body and a path together is a lint error. The `#region` / `#endregion` lines are not shown. A code **Cell** path is not a package name and not a URL.
 - An **Embed** is a fenced block with info string `embed` and a module specifier; optional YAML body for props. It is a **Cell**. YouTube and other framed pages are the same fence, pointing at an iframe guest (typically scaffold-supplied), not a second block type.
-- Images are files in the repo, referenced by path relative to the **Deck** file; there is no media library. An **Embed** specifier is the same kind of relative path, or a package name. There is no reserved embeds folder. A custom **Theme** is the same: a relative path from the **Deck**, or a package name.
+- Images are files in the repo, referenced by path relative to the **Deck** file; there is no media library. An **Embed** specifier is the same kind of relative path, or a package name. There is no reserved embeds folder. A **Theme** is the same specifier: relative from the **Deck**, or a package name — built-ins included. There is no theme id. The specifier names a directory or package that contains `theme.json`; `theme.css` is optional extras; extra files are ignored. A missing `theme.json`, or a specifier that does not resolve, is an authoring error. A **Theme** is not a module.
 - A **Slide** has one **Layout**, chosen from **Cell** count and types. Cover is the talk-title **Layout**; **Crop** is an image mode — they are not the same word.
 - Auto **Layout**: H1-only → Cover; one heading H2+ → Section; one **Cell** otherwise → Solo; two **Cells** → Split-2, except H4 + image (either order) → Caption; three → Split-3; four or more → Grid. A **Background** is not a **Cell** and does not bump the count.
 - A **Slide** **Frontmatter** `layout:` key, when present, wins. Value is one of `cover`, `section`, `solo`, `split-2`, `split-3`, `grid`, `caption`. An impossible override is a lint error; auto still renders. The pick does not change with the viewport — CSS adapts the same **Layout**.
@@ -146,6 +146,12 @@ _Avoid_: animation, none, never, full, all, on
 >
 > **Dev:** "If I show that file's code next to the running **Embed**, and I edit the file, do they drift?"
 > **Domain expert:** "No — that's the file, not a second copy. A **Region** is a named span in that file, not line numbers. A package name is something you run, not something you highlight."
+>
+> **Dev:** "Can I write `theme: harbour`?"
+> **Domain expert:** "No — that would be an id. `theme:` is a specifier, same as an **Embed**, and it is required — there is no default. A built-in is `@speechdeck/themes/harbour`; a custom one is `./themes/mine` next to the **Deck**. That folder needs `theme.json`; `theme.css` is extra. Anyone's package is fine — we don't own their name."
+>
+> **Dev:** "If I omit `theme.css`, do **Marks** and `blur` disappear?"
+> **Domain expert:** "No — the framework paints those. `theme.css` is only the opinions that aren't in the token file."
 
 ## Flagged ambiguities
 
