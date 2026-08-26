@@ -94,7 +94,7 @@ _Avoid_: animation, none, never, full, all, on
 - A **Deck**'s opening **Frontmatter** holds `theme`, `appearance`, and `motion` in v0. The first `#` is the title; there is no `title` key. `theme` is a specifier and is required. `appearance` is `light`, `dark`, or `auto`. Default is dark. `motion` is `auto` or `always`. Default is auto. `always` does not invent motion on a hard cut.
 - A **Deck** has one **Theme**. A **Theme** may be a single colour; travelling through a sequence of colours is optional.
 - A **Theme** paints through contained handles — colour, type, accents, and how connected motion looks — not by picking a **Layout**. The framework's CSS maps those handles onto the public DOM and paints **Looks** and **Marks**; a **Theme** that is only `theme.json` still looks like a **Deck**. `theme.css` is optional extras. A **Theme** does not turn **Motion** on or off.
-- **SpeechDeck** ships built-in **Themes**; at least one uses colours outside sRGB. They live as subpaths of `@speechdeck/themes`. A third-party **Theme** is any package (or folder) that contains `theme.json`; `theme.css` is optional. There is no naming convention it must follow.
+- **SpeechDeck** ships three built-in **Themes**: Harbour, Ink, and Signal. They live as subpaths of `@speechdeck/themes`. Harbour and Signal travel; Ink is still. Signal is the look that uses colours outside sRGB. A third-party **Theme** is any package (or folder) that contains `theme.json`; `theme.css` is optional. There is no naming convention it must follow.
 - A **Background** does not consume a step of that travel; it keeps the current colour so **Looks** still have something to dim against. A Crop **Cell** still consumes a step.
 - A **Slide** may have **Frontmatter** immediately after its `---`. In v0 the only key is `layout`. Empty **Frontmatter** is omitted. `theme`, `appearance`, and `motion` are **Deck**-only.
 - A **Slide** is made of **Cells**. A blank line starts a new **Cell**. **Speech** and **Comments** do not occupy a **Cell**. "Block" is CommonMark's word, not ours.
@@ -127,7 +127,10 @@ _Avoid_: animation, none, never, full, all, on
 > **Domain expert:** "If those **Slides** are connected, the first code **Cell** morphs into the first. There is no id on the fence."
 >
 > **Dev:** "Does every **Theme** travel through colours as I advance?"
-> **Domain expert:** "No. A **Theme** can be one colour for the whole **Deck**. Travel is optional."
+> **Domain expert:** "No. Travel is optional. Harbour and Signal travel; Ink is still — one colour for the whole **Deck**."
+>
+> **Dev:** "Which one is the loud P3 look?"
+> **Domain expert:** "Signal. Harbour travels too, but quieter. Ink is the noir editorial — still."
 >
 > **Dev:** "If the **Slide** is a photo with a heading on it, does the colour still move?"
 > **Domain expert:** "That's a **Background**. The photo is the paint, so it keeps the current colour and doesn't spend a stop. A Crop **Cell** still spends one — you can see the travelling colour around it."
