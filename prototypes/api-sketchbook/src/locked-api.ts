@@ -157,6 +157,7 @@ export type Named = {
 export type Frame = {
   slide: Slide;
   layout: LayoutName;
+  layoutAuto: LayoutName;
   layoutSource: "auto" | "override";
   enter: Enter;
   t: number;

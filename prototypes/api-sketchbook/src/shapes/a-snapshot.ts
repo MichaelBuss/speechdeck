@@ -99,6 +99,10 @@ function RehearseView(_props: { deck: Deck }): Solid.Element {
   return null;
 }
 
+function InspectView(_props: { deck: Deck }): Solid.Element {
+  return null;
+}
+
 export function Slide(props: SlideProps): Solid.Element {
   return Solid.createComponent(SlideView, props);
 }
@@ -123,6 +127,10 @@ export function Rehearse(props: { deck: Deck }): Solid.Element {
   return Solid.createComponent(RehearseView, props);
 }
 
+export function Inspect(props: { deck: Deck }): Solid.Element {
+  return Solid.createComponent(InspectView, props);
+}
+
 /** Author app. JSX is legal here — this file is the scaffold, not a published package. */
 export function AuthorApp(): Solid.Element {
   return Present({ deck: SAMPLE_DECK });
@@ -143,7 +151,7 @@ matchCode(from: CodeBlock, to: CodeBlock): CodeMatch
 
 type Arrival = { to: string; from?: string }
 type Named = { identity: string; name: string; class: "heading" | "code" | "figure" }
-type Frame = { /* layout, enter, t, speech, upNext, names */ }
+type Frame = { /* layout, layoutAuto, layoutSource, enter, t, speech, upNext, names */ }
 type EmbedGuest<El = unknown> = (
   el: El,
   props: Json,
@@ -156,6 +164,7 @@ export const SOLID = `// @speechdeck/solid  — .ts only, import * as Solid from
 DeckProvider(props: ParentProps<{ deck: Deck }>): Solid.JSX.Element
 Present(props: { deck: Deck }): Solid.JSX.Element
 Rehearse(props: { deck: Deck }): Solid.JSX.Element
+Inspect(props: { deck: Deck }): Solid.JSX.Element
 
 useDeck(): Accessor<Deck>
 useSlide(): Accessor<Slide>
@@ -171,13 +180,14 @@ Elapsed(): Solid.JSX.Element
 
 // Adapter internals, not author-facing:
 //   createComponent(SlideView, { get frame() { return resolveFrame(...) } })
-//   router lives inside Present / Rehearse
-//   BroadcastChannel lives inside Present`;
+//   router lives inside Present / Rehearse / Inspect
+//   BroadcastChannel lives inside Present, not Inspect`;
 
 export const VITE = `// @speechdeck/vite
 speechdeck(options?: { deck?: string }): Plugin
 // default: ./deck.md
-// import deck from "./deck.md"  →  Deck`;
+// import deck from "./deck.md"  →  Deck
+// inspect.html is an input only when SPEECHDECK_INSPECT=1`;
 
 export const SEAM = [
   "Call resolveFrame when the URL changes; Arrival.from is the previous Slide or omitted.",
