@@ -1,0 +1,8 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "options": {
+    "typeAware": true
+  },
+  "ignorePatterns": ["prototypes/**", ".pnpm-store/**", "**/node_modules/**"],
+  "jsPlugins": ["eslint-plugin-solid", "@tanstack/eslint-plugin-router"]
+}

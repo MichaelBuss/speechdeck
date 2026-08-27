@@ -4,7 +4,7 @@ Throwaway. Answers: *what are the actual type signatures of the vanilla core and
 
 Winner: **A — Snapshot**. Core is `resolveFrame(deck, arrival)`. The Solid adapter's router is *now*. Authors write `<Present deck={deck} />`. B (Session) and C (compiled routes) were the rejected shapes.
 
-Locked signatures: `src/locked-api.ts` (`@speechdeck/core` + vite) and `src/locked-solid.ts` (`@speechdeck/solid`).
+The locked signatures now live in the packages (`packages/core`, `packages/solid`, `packages/vite`). `src/locked-api.ts` and `src/locked-solid.ts` are the sketch that won; do not treat them as the spec.
 
 ```sh
 cd prototypes/api-sketchbook

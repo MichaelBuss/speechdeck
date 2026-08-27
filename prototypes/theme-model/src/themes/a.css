@@ -1,0 +1,80 @@
+/* A — Manifest tokens. CSS consumes only --sd-* / --shiki-token-*. No layout selectors. */
+
+html[data-variant="A"] {
+  --shiki-color-text: var(--sd-fg);
+  --shiki-token-keyword: var(--sd-accent-4);
+  --shiki-token-function: var(--sd-accent-3);
+  --shiki-token-parameter: var(--sd-fg);
+  --shiki-token-constant: var(--sd-accent-2);
+}
+
+html[data-variant="A"] .slide {
+  color: var(--sd-fg);
+  font-family: var(--sd-font-title);
+  background-color: var(--sd-bg);
+}
+
+html[data-variant="A"] .slide[data-appearance="dark"] {
+  color-scheme: dark;
+}
+
+html[data-variant="A"] .slide[data-appearance="light"] {
+  color-scheme: light;
+}
+
+html[data-variant="A"] .cell[data-kind="heading"] p,
+html[data-variant="A"] .cell[data-kind="prose"] p {
+  font-family: var(--sd-font-body);
+  color: var(--sd-muted);
+  font-size: clamp(0.7rem, 1.8cqi, 1.15rem);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+html[data-variant="A"] h1,
+html[data-variant="A"] h2,
+html[data-variant="A"] h3,
+html[data-variant="A"] h4 {
+  color: var(--sd-title);
+  font-family: var(--sd-font-title);
+}
+
+html[data-variant="A"] pre {
+  font-family: var(--sd-font-mono);
+  background: var(--sd-chrome);
+  border-radius: 0.6cqi;
+  color: var(--shiki-color-text, var(--sd-fg));
+}
+
+html[data-variant="A"] .cell[data-kind="prose"] {
+  padding: 2cqi;
+  border: 1px solid color-mix(in oklch, var(--sd-fg) 16%, transparent);
+  border-radius: 0.7cqi;
+  background: var(--sd-chrome);
+}
+
+html[data-variant="A"] .embed {
+  font-family: var(--sd-font-body);
+  border-radius: 0.6cqi;
+  background: var(--sd-chrome);
+  color: var(--sd-muted);
+}
+
+html[data-variant="A"] .backdrop[data-look~="blur"] img {
+  filter: blur(1.15rem);
+  transform: scale(1.1);
+}
+
+html[data-variant="A"] .backdrop[data-look~="dim"]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: color-mix(in oklch, var(--sd-bg) 55%, transparent);
+  pointer-events: none;
+}
+
+html[data-variant="A"] mark[data-mark] {
+  background: none;
+  color: inherit;
+  box-shadow: inset 0 -0.18em 0 var(--sd-accent-1);
+}

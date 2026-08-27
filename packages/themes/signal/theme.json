@@ -1,0 +1,31 @@
+{
+  "fonts": {
+    "title": "Iowan Old Style, Palatino Linotype, Palatino, Georgia, serif",
+    "body": "ui-sans-serif, system-ui, sans-serif",
+    "mono": "ui-monospace, SFMono-Regular, Menlo, monospace"
+  },
+  "accents": [
+    "color(display-p3 0.95 0.35 0.2)",
+    "color(display-p3 0.2 0.85 0.55)",
+    "color(display-p3 0.98 0.82 0.2)",
+    "color(display-p3 0.35 0.45 0.98)"
+  ],
+  "dark": {
+    "fg": "oklch(0.94 0.03 90)",
+    "title": "oklch(0.98 0.02 90)",
+    "muted": "oklch(0.78 0.04 90)",
+    "chrome": "oklch(0.16 0.04 300 / 0.45)"
+  },
+  "light": {
+    "fg": "oklch(0.24 0.04 300)",
+    "title": "oklch(0.16 0.05 300)",
+    "muted": "oklch(0.4 0.04 300)",
+    "chrome": "oklch(0.99 0.01 90 / 0.5)"
+  },
+  "stops": [
+    "color(display-p3 0.18 0.08 0.42)",
+    "color(display-p3 0.42 0.08 0.22)",
+    "color(display-p3 0.12 0.28 0.38)",
+    "color(display-p3 0.38 0.22 0.08)"
+  ]
+}

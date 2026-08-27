@@ -1,0 +1,11 @@
+packages:
+  - packages/*
+
+confirmModulesPurge: false
+
+allowBuilds:
+  esbuild: true
+
+peerDependencyRules:
+  allowedVersions:
+    typescript: "7"
