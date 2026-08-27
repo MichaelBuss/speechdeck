@@ -1,0 +1,13 @@
+{
+  "name": "@speechdeck/themes",
+  "version": "0.0.0",
+  "license": "MIT",
+  "exports": {
+    "./harbour/theme.json": "./harbour/theme.json",
+    "./ink/theme.json": "./ink/theme.json",
+    "./signal/theme.json": "./signal/theme.json"
+  },
+  "publish": {
+    "include": ["LICENSE", "harbour/theme.json", "ink/theme.json", "signal/theme.json"]
+  }
+}

@@ -1,0 +1,134 @@
+/* B — The CSS file is the theme. Selects public data-attrs. Interpolates --sd-bg via @property. */
+
+@property --sd-t {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 0;
+}
+
+@property --sd-bg {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #111;
+}
+
+html[data-variant="B"] .slide {
+  font-family: "Iowan Old Style", Palatino, Georgia, serif;
+  animation: sd-travel 1s linear both paused;
+  animation-delay: calc(var(--sd-t) * -1s);
+  background-color: var(--sd-bg);
+}
+
+html[data-variant="B"] .slide[data-appearance="dark"] {
+  color-scheme: dark;
+  --sd-fg: oklch(0.93 0.02 90);
+  --sd-title: oklch(0.97 0.015 90);
+  --sd-muted: oklch(0.78 0.03 90);
+  --sd-chrome: oklch(0.18 0.02 90 / 0.45);
+  --sd-accent-1: oklch(0.72 0.16 35);
+  --stop-0: oklch(0.22 0.07 250);
+  --stop-1: oklch(0.24 0.09 310);
+  --stop-2: oklch(0.23 0.1 25);
+  --stop-3: oklch(0.22 0.08 85);
+  --shiki-color-text: var(--sd-fg);
+  --shiki-token-keyword: oklch(0.7 0.12 250);
+  --shiki-token-function: oklch(0.78 0.14 85);
+  --shiki-token-parameter: var(--sd-fg);
+  --shiki-token-constant: oklch(0.72 0.14 145);
+  color: var(--sd-fg);
+}
+
+html[data-variant="B"] .slide[data-appearance="light"] {
+  color-scheme: light;
+  --sd-fg: oklch(0.28 0.03 60);
+  --sd-title: oklch(0.18 0.03 60);
+  --sd-muted: oklch(0.42 0.03 60);
+  --sd-chrome: oklch(1 0 0 / 0.45);
+  --sd-accent-1: oklch(0.55 0.16 35);
+  --stop-0: oklch(0.93 0.04 230);
+  --stop-1: oklch(0.93 0.05 310);
+  --stop-2: oklch(0.93 0.06 25);
+  --stop-3: color(display-p3 0.95 0.82 0.55);
+  color: var(--sd-fg);
+}
+
+html[data-variant="B"] .slide[data-layout="cover"] h1 {
+  letter-spacing: -0.04em;
+}
+
+html[data-variant="B"] .slide[data-layout="section"] {
+  font-style: italic;
+}
+
+html[data-variant="B"] .slide[data-layout="grid"] .cell[data-kind="prose"] {
+  padding: 2cqi;
+  border-left: 0.35cqi solid var(--sd-accent-1);
+  background: var(--sd-chrome);
+}
+
+html[data-variant="B"] .slide[data-layout="caption"] {
+  --sd-chrome: transparent;
+}
+
+html[data-variant="B"] .cell[data-kind="heading"] p {
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  color: var(--sd-muted);
+  font-size: clamp(0.7rem, 1.8cqi, 1.15rem);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  font-style: normal;
+}
+
+html[data-variant="B"] h1,
+html[data-variant="B"] h2,
+html[data-variant="B"] h3,
+html[data-variant="B"] h4 {
+  color: var(--sd-title);
+}
+
+html[data-variant="B"] pre {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  background: var(--sd-chrome);
+  border-radius: 0.6cqi;
+}
+
+html[data-variant="B"] .embed {
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  border-radius: 0.6cqi;
+  background: var(--sd-chrome);
+  color: var(--sd-muted);
+}
+
+html[data-variant="B"] .backdrop[data-look~="blur"] img {
+  filter: blur(1.15rem);
+  transform: scale(1.1);
+}
+
+html[data-variant="B"] .backdrop[data-look~="dim"]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgb(8 6 4 / 0.5);
+  pointer-events: none;
+}
+
+html[data-variant="B"] mark[data-mark="underline"] {
+  background: none;
+  color: inherit;
+  box-shadow: inset 0 -0.18em 0 var(--sd-accent-1);
+}
+
+@keyframes sd-travel {
+  0% {
+    --sd-bg: var(--stop-0);
+  }
+  33.333% {
+    --sd-bg: var(--stop-1);
+  }
+  66.666% {
+    --sd-bg: var(--stop-2);
+  }
+  100% {
+    --sd-bg: var(--stop-3);
+  }
+}
