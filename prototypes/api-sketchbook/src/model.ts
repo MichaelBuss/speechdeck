@@ -160,6 +160,7 @@ export type Named = {
 export type Frame = {
   slide: Slide;
   layout: LayoutName;
+  layoutAuto: LayoutName;
   layoutSource: "auto" | "override";
   enter: Enter;
   t: number;
@@ -373,13 +374,16 @@ function isPossible(layout: LayoutName, cells: readonly Cell[]): boolean {
  */
 export function pickLayout(slide: Slide): {
   layout: LayoutName;
+  layoutAuto: LayoutName;
   layoutSource: "auto" | "override";
 } {
   const auto = autoLayout(slide.cells);
   const override = slide.layout;
-  if (override === undefined) return { layout: auto, layoutSource: "auto" };
-  if (!isPossible(override, slide.cells)) return { layout: auto, layoutSource: "auto" };
-  return { layout: override, layoutSource: "override" };
+  if (override === undefined) return { layout: auto, layoutAuto: auto, layoutSource: "auto" };
+  if (!isPossible(override, slide.cells)) {
+    return { layout: auto, layoutAuto: auto, layoutSource: "auto" };
+  }
+  return { layout: override, layoutAuto: auto, layoutSource: "override" };
 }
 
 function adjacent(deck: Deck, from: string, to: string): boolean {
@@ -392,7 +396,7 @@ function adjacent(deck: Deck, from: string, to: string): boolean {
  */
 export function resolveFrame(deck: Deck, arrival: Arrival): Frame {
   const slide = slideById(deck, arrival.to);
-  const { layout, layoutSource } = pickLayout(slide);
+  const { layout, layoutAuto, layoutSource } = pickLayout(slide);
   const sequential =
     arrival.from !== undefined &&
     adjacent(deck, arrival.from, arrival.to) &&
@@ -403,6 +407,7 @@ export function resolveFrame(deck: Deck, arrival: Arrival): Frame {
   return {
     slide,
     layout,
+    layoutAuto,
     layoutSource,
     enter,
     t: deck.slides.length <= 1 ? 0 : i / (deck.slides.length - 1),

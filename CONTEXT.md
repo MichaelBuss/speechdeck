@@ -17,6 +17,10 @@ _Avoid_: note, speaker notes, notes
 The speaker-facing surface: this **Slide**'s **Speech**, a preview of this **Slide**, and a preview of the next.
 _Avoid_: speaker notes, notes pane, presenter mode
 
+**Inspect**:
+The author-facing composition: a **Slide** on a stage at a named viewport, with a readout of **Layout**, **Cells**, and refuse. The audience never sees it.
+_Avoid_: debug overlay, HUD, author mode, preview, Stage
+
 **Slide**:
 An audience-facing unit of the document; it reflows to the viewport and has no fixed canvas.
 _Avoid_: scene, page, beat, card
@@ -94,14 +98,15 @@ The showing of one **Slide**, optionally from another. First paint has no origin
 _Avoid_: cursor, edge, navigation, from/to
 
 **Frame**:
-One paint of a **Slide** for an **Arrival**: its **Layout**, hard cut or connected, travel, **Speech**, and the next **Slide**.
+One paint of a **Slide** for an **Arrival**: its **Layout** (the one in use, and the auto pick), hard cut or connected, travel, **Speech**, and the next **Slide**.
 _Avoid_: view, snapshot, iframe, page
 
 ## Relationships
 
 - **SpeechDeck** is the framework; a **Deck** is one presentation written in it. A **Deck** lives in a repo that depends on **SpeechDeck**; it is not a file a binary is pointed at.
-- **Speech** is the only presenter-facing channel; there is no Note. The audience sees the **Slide**; the speaker sees **Presenter view**.
+- **Speech** is the only presenter-facing channel; there is no Note. The audience sees the **Slide**; the speaker sees **Presenter view**. The author sees **Inspect**.
 - **Presenter view** reflows to its viewport; it is not a fixed canvas. This **Slide**'s **Speech** is the primary surface; previews of this **Slide** and the next are secondary. **Presenter view** shows this **Slide**'s **Speech** only; advance replaces it. Overflow scrolls. It is not mirrored. A preview of a **Slide** is that **Slide** as the audience viewport sees it — laid out at the audience size, then scaled to fit the preview slot. The **Presenter view** window is not a **Slide** viewport. An **Embed** in a preview is not live.
+- **Inspect** is a third composition next to Present and Rehearse. It is not **Presenter view** and it does not show **Speech**. Its stage is a **Slide** viewport, so an **Embed** there is live. It does not share Present's sync: advancing in **Inspect** does not move the audience **Slide**.
 - A **Deck** is a sequence of **Slides**; each **Slide** carries its **Speech**. A `---` starts a new **Slide**. Extra blank lines do not.
 - A **Slide** is addressed by its 1-based place in the **Deck**. The first **Slide** is `1`. Two **Slides** may share a heading; they do not share an address. There is no `id` **Frontmatter** key.
 - A **Deck**'s opening **Frontmatter** holds `theme`, `appearance`, and `motion` in v0. The first `#` is the title; there is no `title` key. `theme` is a specifier and is required. `appearance` is `light`, `dark`, or `auto`. Default is dark. `motion` is `auto` or `always`. Default is auto. `always` does not invent motion on a hard cut.
@@ -111,7 +116,7 @@ _Avoid_: view, snapshot, iframe, page
 - A **Background** does not consume a step of that travel; it keeps the current colour so **Looks** still have something to dim against. A Crop **Cell** still consumes a step.
 - A **Slide** may have **Frontmatter** immediately after its `---`. In v0 the keys are `layout` and `enter`. Empty **Frontmatter** is omitted. `theme`, `appearance`, and `motion` are **Deck**-only.
 - `enter` is `cut` or `connected`. Default is cut. A bare `---` is a **hard cut**. `enter: connected` on the arriving **Slide** is the opt-in: this **Slide** is connected to the one before it in the **Deck**. `enter: cut` is legal and redundant. `enter: connected` on the first **Slide** is an authoring error. There is no **Connection** noun.
-- An **Arrival** is the showing of one **Slide**, and may name the **Slide** just left. First paint, and a deep link that is not a sequential step, have no origin. A **Frame** is that **Slide** painted for this **Arrival**.
+- An **Arrival** is the showing of one **Slide**, and may name the **Slide** just left. First paint, and a deep link that is not a sequential step, have no origin. A **Frame** is that **Slide** painted for this **Arrival**. The **Frame** always names the auto **Layout** pick, even when **Frontmatter** overrode it. An impossible override is a **Slide** `layout` that is not the **Frame**'s **Layout**.
 - Connected motion, identity names, and code pairing run only on that document-order edge — sequential next, and sequential back. First paint, a deep link, and a skip that jumps over a **Slide** are a **hard cut** even if the destination says `enter: connected`. A **Theme**'s travel *t* does not reset on a **hard cut**; the colour snaps.
 - A **Slide** is made of **Cells**. A blank line starts a new **Cell**. **Speech** and **Comments** do not occupy a **Cell**. "Block" is CommonMark's word, not ours.
 - Headings, tables, images, fenced code, and **Embeds** appear on a **Slide** by themselves; paragraphs, lists and quotes remain **Speech** unless **Promotion** precedes them. There is no math **Cell**.
@@ -138,6 +143,12 @@ _Avoid_: view, snapshot, iframe, page
 >
 > **Dev:** "Do I read **Speech** on the projector?"
 > **Domain expert:** "No — the audience sees the **Slide**. You read **Presenter view**. Open a second window onto the **Slide** to present; stay in one window to rehearse."
+>
+> **Dev:** "How do I see if this **Slide** refuses on a phone?"
+> **Domain expert:** "**Inspect**. Not **Presenter view** — that's **Speech**. Not the audience window."
+>
+> **Dev:** "If I drag the 16:9 box, am I still on 16:9?"
+> **Domain expert:** "No — that's Freeform. Fill is the window; you don't drag Fill."
 >
 > **Dev:** "If I change the function on the next **Slide**, does the code morph?"
 > **Domain expert:** "If those **Slides** are connected, the first code **Cell** morphs into the first. There is no id on the fence."
@@ -190,3 +201,4 @@ _Avoid_: view, snapshot, iframe, page
 - **Slide address** — resolved: 1-based place in the **Deck**, as a string (`"1"`, `"2"`). Not heading slug (morphing **Slides** share a heading). Not a Frontmatter `id`.
 - **block math** — resolved: not a **Cell**. Equations are not a first-class unit in v0.
 - **plugin / extension** — resolved: there is no Plugin. The third-party seam is **Embed**. A diagram is an image or an **Embed**, not a **Cell** kind.
+- **HUD / debug overlay** — resolved: not a glossary noun. The composition is **Inspect**. HUD was already rejected as a **Presenter view** layout.

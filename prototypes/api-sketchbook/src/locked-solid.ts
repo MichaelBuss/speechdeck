@@ -21,6 +21,7 @@ export declare function DeckProvider(
 ): Element;
 export declare function Present(props: { deck: Deck }): Element;
 export declare function Rehearse(props: { deck: Deck }): Element;
+export declare function Inspect(props: { deck: Deck }): Element;
 
 export declare function useDeck(): Accessor<Deck>;
 export declare function useSlide(): Accessor<SlideDoc>;
