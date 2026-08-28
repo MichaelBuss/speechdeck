@@ -156,7 +156,24 @@ export type EmbedGuest<El = unknown> = (
   ready: Promise<void>;
 };
 
-export function parseDeck(_markdown: string, _files: FileMap): Deck {
+export type DiagnosticKind =
+  | "connected-on-first"
+  | "duplicate-region"
+  | "body-and-path"
+  | "impossible-layout"
+  | "unknown-image-token";
+
+export type Diagnostic = {
+  kind: DiagnosticKind;
+  /** 1-based Slide id when the problem belongs to one Slide. */
+  slide?: string;
+  message: string;
+};
+
+export function parseDeck(
+  _markdown: string,
+  _files: FileMap,
+): { deck: Deck; diagnostics: readonly Diagnostic[] } {
   throw new Error("not implemented");
 }
 
