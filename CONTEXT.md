@@ -18,8 +18,16 @@ The speaker-facing surface: this **Slide**'s **Speech**, a preview of this **Sli
 _Avoid_: speaker notes, notes pane, presenter mode
 
 **Inspect**:
-The author-facing composition: a **Slide** on a stage at a named viewport, with a readout of **Layout**, **Cells**, and refuse. The audience never sees it.
+The author-facing composition: a **Slide** on a stage at a named viewport, with a readout of **Layout**, **Cells**, and **Refuse**. The audience never sees it.
 _Avoid_: debug overlay, HUD, author mode, preview, Stage
+
+**Refuse**:
+A **Slide** that cannot fit its **Cells** after reflow at a viewport.
+_Avoid_: overflow (as the product word), clip, scale
+
+**Lint**:
+A document problem that still yields a **Deck**.
+_Avoid_: warning, diagnostic, authoring error (for these)
 
 **Slide**:
 An audience-facing unit of the document; it reflows to the viewport and has no fixed canvas.
@@ -115,22 +123,22 @@ _Avoid_: view, snapshot, iframe, page
 - **SpeechDeck** ships three built-in **Themes**: Harbour, Ink, and Signal. They live as subpaths of `@speechdeck/themes`. Harbour and Signal travel; Ink is still. Signal is the look that uses colours outside sRGB. A third-party **Theme** is any package (or folder) that contains `theme.json`; `theme.css` is optional. There is no naming convention it must follow.
 - A **Background** does not consume a step of that travel; it keeps the current colour so **Looks** still have something to dim against. A Crop **Cell** still consumes a step.
 - A **Slide** may have **Frontmatter** immediately after its `---`. In v0 the keys are `layout` and `enter`. Empty **Frontmatter** is omitted. `theme`, `appearance`, and `motion` are **Deck**-only.
-- `enter` is `cut` or `connected`. Default is cut. A bare `---` is a **hard cut**. `enter: connected` on the arriving **Slide** is the opt-in: this **Slide** is connected to the one before it in the **Deck**. `enter: cut` is legal and redundant. `enter: connected` on the first **Slide** is an authoring error. There is no **Connection** noun.
+- `enter` is `cut` or `connected`. Default is cut. A bare `---` is a **hard cut**. `enter: connected` on the arriving **Slide** is the opt-in: this **Slide** is connected to the one before it in the **Deck**. `enter: cut` is legal and redundant. `enter: connected` on the first **Slide** is a **Lint**; the **Arrival** is still a **hard cut**. There is no **Connection** noun.
 - An **Arrival** is the showing of one **Slide**, and may name the **Slide** just left. First paint, and a deep link that is not a sequential step, have no origin. A **Frame** is that **Slide** painted for this **Arrival**. The **Frame** always names the auto **Layout** pick, even when **Frontmatter** overrode it. An impossible override is a **Slide** `layout` that is not the **Frame**'s **Layout**.
 - Connected motion, identity names, and code pairing run only on that document-order edge — sequential next, and sequential back. First paint, a deep link, and a skip that jumps over a **Slide** are a **hard cut** even if the destination says `enter: connected`. A **Theme**'s travel *t* does not reset on a **hard cut**; the colour snaps.
 - A **Slide** is made of **Cells**. A blank line starts a new **Cell**. **Speech** and **Comments** do not occupy a **Cell**. "Block" is CommonMark's word, not ours.
 - Headings, tables, images, fenced code, and **Embeds** appear on a **Slide** by themselves; paragraphs, lists and quotes remain **Speech** unless **Promotion** precedes them. There is no math **Cell**.
 - Fenced code is a **Cell**. When two **Slides** are connected, a heading with the same text persists, an image with the same src persists, and their code **Cells** pair by index; matched code morphs. A leftover **Cell**, and any code on a hard-cut, does not. Authors do not name the pairing. There is no match id on the fence.
-- A code **Cell**'s bytes are the fence body, or a path relative to the **Deck** — a file, or a **Region** of one. An **Embed** at that same path runs the file. Those bytes cannot drift. A **Region** is `#region name` … `#endregion` in that file; duplicate names in one file are an authoring error. A line range is not a **Region**. `#name` is only on the code fence; the **Embed** has no fragment.
-- A file-backed code **Cell** is spelled with the language, then the path, and an empty body: `ts ./demos/counter.ts` or `ts ./demos/counter.ts#adapter` on the fence info string. A body and a path together is a lint error. The `#region` / `#endregion` lines are not shown. A code **Cell** path is not a package name and not a URL.
+- A code **Cell**'s bytes are the fence body, or a path relative to the **Deck** — a file, or a **Region** of one. An **Embed** at that same path runs the file. Those bytes cannot drift. A **Region** is `#region name` … `#endregion` in that file; duplicate names in one file are a **Lint**. A line range is not a **Region**. `#name` is only on the code fence; the **Embed** has no fragment.
+- A file-backed code **Cell** is spelled with the language, then the path, and an empty body: `ts ./demos/counter.ts` or `ts ./demos/counter.ts#adapter` on the fence info string. A body and a path together is a **Lint**. The `#region` / `#endregion` lines are not shown. A code **Cell** path is not a package name and not a URL.
 - An **Embed** is a fenced block with info string `embed` and a module specifier; optional YAML body for props. It is a **Cell**. YouTube and other framed pages are the same fence, pointing at an iframe guest (typically scaffold-supplied), not a second block type.
-- Images are files in the repo, referenced by path relative to the **Deck** file; there is no media library. An **Embed** specifier is the same kind of relative path, or a package name. There is no reserved embeds folder. A **Theme** is the same specifier: relative from the **Deck**, or a package name — built-ins included. There is no theme id. The specifier names a directory or package that contains `theme.json`; `theme.css` is optional extras; extra files are ignored. A missing `theme.json`, or a specifier that does not resolve, is an authoring error. A **Theme** is not a module.
+- Images are files in the repo, referenced by path relative to the **Deck** file; there is no media library. An **Embed** specifier is the same kind of relative path, or a package name. There is no reserved embeds folder. A **Theme** is the same specifier: relative from the **Deck**, or a package name — built-ins included. There is no theme id. The specifier names a directory or package that contains `theme.json`; `theme.css` is optional extras; extra files are ignored. A missing `theme.json`, or a specifier that does not resolve, does not yield a **Deck**. A **Theme** is not a module.
 - A **Slide** has one **Layout**, chosen from **Cell** count and types. Cover is the talk-title **Layout**; **Crop** is an image mode — they are not the same word.
 - Auto **Layout**: H1-only → Cover; one heading H2+ → Section; one **Cell** otherwise → Solo; two **Cells** → Split-2, except H4 + image (either order) → Caption; three → Split-3; four or more → Grid. A **Background** is not a **Cell** and does not bump the count.
-- A **Slide** **Frontmatter** `layout:` key, when present, wins. Value is one of `cover`, `section`, `solo`, `split-2`, `split-3`, `grid`, `caption`. An impossible override is a lint error; auto still renders. The pick does not change with the viewport — CSS adapts the same **Layout**.
+- A **Slide** **Frontmatter** `layout:` key, when present, wins. Value is one of `cover`, `section`, `solo`, `split-2`, `split-3`, `grid`, `caption`. An impossible override is a **Lint**; auto still renders. The **Frame**'s **Layout** is the auto pick; `layoutSource` stays override. The pick does not change with the viewport — CSS adapts the same **Layout**.
 - A heading that fits on one line is centered; a heading that wraps is start-aligned. There is no author override.
-- A **Slide** that still cannot fit its **Cells** after reflow is an authoring error: the audience never gets a scaled canvas or a scrolling **Slide**.
-- An image is spelled `![alt](./file.jpg)` with an optional title of tokens, in order, all optional: `background`, then `contain | crop`, then a **Focus**, then any **Looks**. Unrecognized tokens are a lint error. Default is **Contain**, **Focus** `center`, no **Look**. A **Background** image defaults to **Crop**. Captions are an H4 **Cell**, never the title string.
+- A **Slide** that still cannot fit its **Cells** after reflow is **Refuse**: the audience never gets a scaled canvas or a scrolling **Slide**. **Refuse** is measured at a viewport; it is not a **Lint**.
+- An image is spelled `![alt](./file.jpg)` with an optional title of tokens, in order, all optional: `background`, then `contain | crop`, then a **Focus**, then any **Looks**. Unrecognized tokens are a **Lint**. Default is **Contain**, **Focus** `center`, no **Look**. A **Background** image defaults to **Crop**. Captions are an H4 **Cell**, never the title string.
 - A `background` title makes that image a **Background**: it drops out of the **Cell** count, so a heading on a photo is still Cover or Section, not Split.
 - `<!--on-->` is reserved for **Promotion**; any other HTML comment is a **Comment**.
 - A **Mark** is spelled `<mark>` or `<mark data-mark="circle">`. Types: `underline`, `circle`, `highlight`, `box`, `strike-through`. Default type is `underline`. **Marks** are not used inside fenced code.
@@ -145,7 +153,10 @@ _Avoid_: view, snapshot, iframe, page
 > **Domain expert:** "No — the audience sees the **Slide**. You read **Presenter view**. Open a second window onto the **Slide** to present; stay in one window to rehearse."
 >
 > **Dev:** "How do I see if this **Slide** refuses on a phone?"
-> **Domain expert:** "**Inspect**. Not **Presenter view** — that's **Speech**. Not the audience window."
+> **Domain expert:** "**Inspect**. That's **Refuse** — it didn't fit after reflow. Not **Presenter view**, not the audience window."
+>
+> **Dev:** "I set `layout: cover` on a Split. Is that **Refuse**?"
+> **Domain expert:** "No — that's a **Lint**. Auto still renders. **Refuse** is when the **Cells** still don't fit the phone."
 >
 > **Dev:** "If I drag the 16:9 box, am I still on 16:9?"
 > **Domain expert:** "No — that's Freeform. Fill is the window; you don't drag Fill."
@@ -202,3 +213,4 @@ _Avoid_: view, snapshot, iframe, page
 - **block math** — resolved: not a **Cell**. Equations are not a first-class unit in v0.
 - **plugin / extension** — resolved: there is no Plugin. The third-party seam is **Embed**. A diagram is an image or an **Embed**, not a **Cell** kind.
 - **HUD / debug overlay** — resolved: not a glossary noun. The composition is **Inspect**. HUD was already rejected as a **Presenter view** layout.
+- **lint vs authoring error vs refuse** — resolved: **Lint** is a document problem that still yields a **Deck**. **Refuse** is a paint fact at a viewport, not a **Lint**. A missing `theme.json` does not yield a **Deck**. There is no Diagnostic noun.

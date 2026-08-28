@@ -2,7 +2,7 @@
 
 You write a Markdown document. Headings, figures, code, and live mounts reach the audience. The paragraphs in between are **Speech** — you read them; they don’t.
 
-There is no slide canvas. Each **Slide** reflows to the screen it lands on. If it still cannot fit, that is an authoring error, not a cue to shrink or scroll.
+There is no slide canvas. Each **Slide** reflows to the screen it lands on. If it still cannot fit, that is **Refuse**, not a cue to shrink or scroll.
 
 A **Theme** is type and colour, and may travel as you advance. Two **Slides** are a **hard cut** unless the arriving one opts in with `enter: connected`.
 
@@ -49,7 +49,7 @@ The public API is the TypeScript in the packages — real signatures, functions 
 
 The glossary is [`CONTEXT.md`](./CONTEXT.md). Hard-to-reverse calls live in [`docs/adr/`](./docs/adr/). Throwaway prototypes under `prototypes/` proved the decisions; they are not the product.
 
-`Present` opens an audience window on click. `Rehearse` is one window. `Inspect` is a gated third composition (`pnpm inspect`) so the author can see **Layout** and refuse without putting chrome on the projector.
+`Present` opens an audience window on click. `Rehearse` is one window. `Inspect` is a gated third composition (`pnpm inspect`) so the author can see **Layout** and **Refuse** without putting chrome on the projector.
 
 ## Repo
 
