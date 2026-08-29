@@ -9,3 +9,6 @@ allowBuilds:
 peerDependencyRules:
   allowedVersions:
     typescript: "7"
+
+minimumReleaseAgeExclude:
+  - '@jsr/readyrun__readyrun@0.1.0'
