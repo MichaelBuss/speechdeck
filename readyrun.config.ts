@@ -7,5 +7,5 @@ export default defineConfig({
     labels: ["ready-for-agent"],
   }),
   worker: cursor(),
-  model: "composer-2",
+  model: "claude-sonnet-5-thinking-high",
 });
