@@ -1,4 +1,4 @@
-import { defineConfig, github, cursor } from "@readyrun/readyrun";
+import { defineConfig, github, claude } from "@readyrun/readyrun";
 
 export default defineConfig({
   tracker: github({
@@ -6,6 +6,7 @@ export default defineConfig({
     ready: "unblocked",
     labels: ["ready-for-agent"],
   }),
-  worker: cursor(),
-  model: "claude-sonnet-5-thinking-high",
+  worker: claude(),
+  model: "sonnet",
+  effort: "high",
 });
