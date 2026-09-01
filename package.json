@@ -9,7 +9,11 @@
     "fmt:check": "oxfmt --check",
     "test": "vitest run",
     "check": "pnpm typecheck && pnpm lint && pnpm fmt:check && pnpm test",
-    "publish:jsr": "node scripts/publish-jsr.mjs"
+    "publish:jsr": "node scripts/publish-jsr.mjs",
+    "readyrun": "node scripts/readyrun.mjs"
+  },
+  "dependencies": {
+    "@readyrun/readyrun": "jsr:^0.1.1"
   },
   "devDependencies": {
     "@tanstack/eslint-plugin-router": "^1.162.0",
@@ -25,8 +29,5 @@
   "engines": {
     "node": ">=22"
   },
-  "packageManager": "pnpm@11.21.0",
-  "dependencies": {
-    "@readyrun/readyrun": "jsr:^0.1.1"
-  }
+  "packageManager": "pnpm@11.21.0"
 }
