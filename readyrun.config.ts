@@ -9,4 +9,6 @@ export default defineConfig({
   worker: claude(),
   model: "sonnet",
   effort: "high",
+  contextFile: "CONTEXT.md",
+  permissions: "unattended",
 });
