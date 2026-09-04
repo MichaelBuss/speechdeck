@@ -11,3 +11,13 @@ test("engine CSS paints every Mark type without needing theme.css", () => {
     expect(css).toContain(`mark[data-mark="${type}"]`);
   }
 });
+
+test("engine CSS arranges Split-2, Split-3, and Grid without needing theme.css", () => {
+  for (const layout of ["split-2", "split-3", "grid"]) {
+    expect(css).toContain(`.cells[data-layout="${layout}"]`);
+  }
+});
+
+test("engine CSS reflows Split/Grid at a narrow container without changing the Layout name", () => {
+  expect(css).toContain("@container slide (max-width:");
+});

@@ -2,6 +2,66 @@
  * Marks — this file is the only place that paints them, consuming the --sd-* handles a
  * Theme's tokens set (see ADR 0004, ADR 0010). Public DOM: mark[data-mark]. */
 
+/* Layout: the arrangement never changes with the viewport (resolveFrame takes no
+ * viewport); only this container-query reflow does, keyed off `.slide`'s own size. */
+.slide {
+  container-type: size;
+  container-name: slide;
+}
+
+.cells {
+  display: grid;
+  height: 100%;
+  min-height: 0;
+  gap: min(3.5cqi, 5cqb);
+  padding-inline: min(6cqi, 10cqb);
+  padding-block: min(6cqb, 10cqi);
+}
+
+.cell {
+  min-width: 0;
+  min-height: 0;
+}
+
+.cells[data-layout="cover"],
+.cells[data-layout="section"],
+.cells[data-layout="solo"] {
+  place-items: center;
+  text-align: center;
+}
+
+.cells[data-layout="split-2"] {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.cells[data-layout="split-3"] {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.cells[data-layout="grid"] {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+}
+
+.cells[data-layout="grid"][data-items="5"],
+.cells[data-layout="grid"][data-items="6"] {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+}
+
+/* A narrow `.slide` stacks Split/Grid into one column — the Layout name is unchanged,
+ * only its CSS arrangement adapts. */
+@container slide (max-width: 42rem) {
+  .cells[data-layout="split-2"],
+  .cells[data-layout="split-3"],
+  .cells[data-layout="grid"] {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: none;
+  }
+}
+
 mark {
   background: none;
   color: inherit;
