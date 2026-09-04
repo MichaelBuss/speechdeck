@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { matchCode, parseDeck, resolveFrame, type FileMap } from "./index.ts";
+import { matchCode, parseDeck, resolveFrame, type CodeBlock, type FileMap } from "./index.ts";
 
 const harbourTheme = JSON.stringify({
   fonts: { title: "serif", body: "sans-serif", mono: "monospace" },
@@ -734,12 +734,55 @@ test("parseDeck: an Embed fence with no specifier does not yield a Deck", () => 
   expect(() => parseDeck(source, files)).toThrow();
 });
 
-test("matchCode is not implemented", () => {
-  const block = {
-    kind: "code" as const,
+function codeBlock(lang: string, bytes: string): CodeBlock {
+  return { kind: "code", lang, source: { from: "fence", bytes }, html: "" };
+}
+
+test("matchCode: same-language code Cells pair to morph, with a deterministic key", () => {
+  const from = codeBlock("ts", "let n = 0;");
+  const to = codeBlock("ts", "let n = 1;");
+
+  const match = matchCode(from, to);
+
+  expect(match.pairing).toBe("morph");
+  expect(matchCode(from, to)).toEqual(match);
+});
+
+test("matchCode: a language swap does not pair — it is not the same Cell persisting", () => {
+  const from = codeBlock("ts", "let n = 0;");
+  const to = codeBlock("py", "n = 0");
+
+  expect(matchCode(from, to).pairing).toBe("none");
+});
+
+test("matchCode: a different pairing mints a different key — the key only has to agree between this transition's two elements, not across the Deck", () => {
+  const from = codeBlock("ts", "let n = 0;");
+  const toA = codeBlock("ts", "let n = 1;");
+  const toB = codeBlock("ts", "let n = 2;");
+
+  expect(matchCode(from, toA).key).not.toBe(matchCode(from, toB).key);
+});
+
+test("matchCode: a file-backed Cell keys off its path — an Embed at the same path runs the same bytes, so the path alone already identifies it", () => {
+  const from: CodeBlock = {
+    kind: "code",
     lang: "ts",
-    source: { from: "fence" as const, bytes: "" },
+    source: { from: "file", path: "./demos/counter.ts", bytes: "let n = 0;" },
     html: "",
   };
-  expect(() => matchCode(block, block)).toThrow("not implemented");
+  const to: CodeBlock = {
+    kind: "code",
+    lang: "ts",
+    source: { from: "file", path: "./demos/counter.ts", bytes: "let n = 1;" },
+    html: "",
+  };
+  const toOtherFile: CodeBlock = {
+    kind: "code",
+    lang: "ts",
+    source: { from: "file", path: "./demos/other.ts", bytes: "let n = 0;" },
+    html: "",
+  };
+
+  expect(matchCode(from, to).pairing).toBe("morph");
+  expect(matchCode(from, to).key).not.toBe(matchCode(from, toOtherFile).key);
 });

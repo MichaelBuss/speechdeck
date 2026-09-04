@@ -213,8 +213,9 @@ function fnv1a32(input: string): string {
 /** A view-transition-name is a CSS custom-ident: raw heading text or an image src
  *  cannot serve directly, so identity is hashed into one instead of slugged (a slug
  *  can collide across different identities; a hash of the full identity does not). */
-function mintName(kind: "heading" | "figure", identity: string): string {
-  return `sd-${kind === "heading" ? "h" : "f"}-${fnv1a32(identity)}`;
+function mintName(kind: "heading" | "figure" | "code", identity: string): string {
+  const prefix = kind === "heading" ? "h" : kind === "figure" ? "f" : "c";
+  return `sd-${prefix}-${fnv1a32(identity)}`;
 }
 
 /** Duplicate identity fail the build (ADR 0005): the runtime never suffixes a name,
@@ -975,6 +976,20 @@ export function resolveFrame(deck: Deck, arrival: Arrival): Frame {
   };
 }
 
-export function matchCode(_from: CodeBlock, _to: CodeBlock): CodeMatch {
-  throw new Error("not implemented");
+function codeIdentity(block: CodeBlock): string {
+  return block.source.from === "file" ? block.source.path : block.source.bytes;
+}
+
+/** A code Cell has no content identity the way a heading's text or an image's src does —
+ *  the whole point of the morph is that the bytes changed. Pairing is positional instead:
+ *  the caller aligns each Slide's code Cells by index and hands the pair at that index
+ *  here. A language swap is not the same Cell persisting, so it does not pair. The key is
+ *  minted from both sides together (unlike a heading's independently-mintable name) because
+ *  it only has to agree between the two elements of this one transition, not across the Deck. */
+export function matchCode(from: CodeBlock, to: CodeBlock): CodeMatch {
+  const identity = `code:${from.lang}:${codeIdentity(from)}->${to.lang}:${codeIdentity(to)}`;
+  return {
+    key: mintName("code", identity),
+    pairing: from.lang === to.lang ? "morph" : "none",
+  };
 }

@@ -1,8 +1,10 @@
 import {
+  matchCode,
   resolveFrame,
   type Appearance,
   type Arrival,
   type Cell,
+  type CodeBlock,
   type Deck,
   type EmbedBlock,
   type EmbedGuest,
@@ -198,6 +200,10 @@ function renderCell(cell: Cell, mode: "live" | "preview", loadEmbed: LoadEmbed):
     cellEl.dataset["kind"] = block.kind;
     cellEl.innerHTML = block.html;
   }
+  if (cell.blocks.length === 1 && block?.kind === "code") {
+    cellEl.dataset["kind"] = "code";
+    cellEl.innerHTML = block.html;
+  }
   return cellEl;
 }
 
@@ -337,6 +343,55 @@ function applyNames(slideEl: HTMLElement, names: readonly Named[]): void {
   });
 }
 
+/** A code Cell in Slide-cell order — unlike a heading or an image, code has no content
+ *  identity to name it by, so pairing across a connected edge is positional. */
+function codeCells(slide: SlideDoc): CodeBlock[] {
+  const blocks: CodeBlock[] = [];
+  for (const cell of slide.cells) {
+    const block = cell.blocks[0];
+    if (cell.blocks.length === 1 && block?.kind === "code") blocks.push(block);
+  }
+  return blocks;
+}
+
+function codeCellTargets(slideEl: HTMLElement): HTMLElement[] {
+  return [...slideEl.querySelectorAll<HTMLElement>('.cell[data-kind="code"]')];
+}
+
+type CodePairing = { index: number; key: string };
+
+/** Zips each side's code Cells by index (ADR 0019/glossary: code pairs by index, not
+ *  content) and asks core's matchCode to decide the pairing at each shared index. A
+ *  leftover Cell past the shorter side's length is never paired, so it is never named
+ *  and cannot morph. */
+function pairCodeCells(from: SlideDoc, to: SlideDoc): CodePairing[] {
+  const fromCode = codeCells(from);
+  const toCode = codeCells(to);
+  const pairings: CodePairing[] = [];
+  const shared = Math.min(fromCode.length, toCode.length);
+  for (let i = 0; i < shared; i++) {
+    const fromBlock = fromCode[i];
+    const toBlock = toCode[i];
+    if (fromBlock === undefined || toBlock === undefined) continue;
+    const match = matchCode(fromBlock, toBlock);
+    if (match.pairing === "morph") pairings.push({ index: i, key: match.key });
+  }
+  return pairings;
+}
+
+/** Stamped on both the outgoing and the incoming DOM from the one `pairCodeCells` call
+ *  made for this transition — unlike `applyNames`, the same key has to reach both sides,
+ *  since a code Cell's key is minted from the pair, not independently per Frame. */
+function applyCodePairings(slideEl: HTMLElement, pairings: readonly CodePairing[]): void {
+  const targets = codeCellTargets(slideEl);
+  for (const pairing of pairings) {
+    const target = targets[pairing.index];
+    if (target === undefined) continue;
+    target.style.setProperty("view-transition-name", pairing.key);
+    target.style.setProperty("view-transition-class", "code");
+  }
+}
+
 function prefersReducedMotion(): boolean {
   return (
     typeof window !== "undefined" &&
@@ -377,9 +432,12 @@ function repaintFrame(
     return;
   }
   applyNames(slideEl, from.names);
+  const codePairings = pairCodeCells(from.slide, to.slide);
+  applyCodePairings(slideEl, codePairings);
   document.startViewTransition(() => {
     paintFrame(slideEl, to, tokens, appearance, loadEmbed);
     applyNames(slideEl, to.names);
+    applyCodePairings(slideEl, codePairings);
   });
 }
 
