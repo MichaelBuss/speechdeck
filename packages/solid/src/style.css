@@ -5,11 +5,67 @@
 /* Layout: the arrangement never changes with the viewport (resolveFrame takes no
  * viewport); only this container-query reflow does, keyed off `.slide`'s own size. */
 .slide {
+  position: relative;
   container-type: size;
   container-name: slide;
 }
 
+/* The Background: full-bleed behind `.cells`, not a Cell, so it never bumps a Layout
+ * count. Looks paint the same `data-look` contract as a foreground image. */
+.backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background-repeat: no-repeat;
+}
+
+.backdrop[data-fit="contain"] {
+  background-size: contain;
+}
+
+.backdrop[data-fit="crop"] {
+  background-size: cover;
+}
+
+.backdrop[data-focus="top-left"] {
+  background-position: top left;
+}
+
+.backdrop[data-focus="top"] {
+  background-position: top;
+}
+
+.backdrop[data-focus="top-right"] {
+  background-position: top right;
+}
+
+.backdrop[data-focus="left"] {
+  background-position: left;
+}
+
+.backdrop[data-focus="center"] {
+  background-position: center;
+}
+
+.backdrop[data-focus="right"] {
+  background-position: right;
+}
+
+.backdrop[data-focus="bottom-left"] {
+  background-position: bottom left;
+}
+
+.backdrop[data-focus="bottom"] {
+  background-position: bottom;
+}
+
+.backdrop[data-focus="bottom-right"] {
+  background-position: bottom right;
+}
+
 .cells {
+  position: relative;
+  z-index: 1;
   display: grid;
   height: 100%;
   min-height: 0;
@@ -21,6 +77,92 @@
 .cell {
   min-width: 0;
   min-height: 0;
+}
+
+.cell[data-kind="image"] {
+  display: flex;
+}
+
+/* Contain/Crop and Focus are shared by every foreground image Cell, whatever Layout it
+ * lands in. */
+img[data-fit] {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  display: block;
+}
+
+img[data-fit="contain"] {
+  object-fit: contain;
+}
+
+img[data-fit="crop"] {
+  object-fit: cover;
+}
+
+img[data-focus="top-left"] {
+  object-position: top left;
+}
+
+img[data-focus="top"] {
+  object-position: top;
+}
+
+img[data-focus="top-right"] {
+  object-position: top right;
+}
+
+img[data-focus="left"] {
+  object-position: left;
+}
+
+img[data-focus="center"] {
+  object-position: center;
+}
+
+img[data-focus="right"] {
+  object-position: right;
+}
+
+img[data-focus="bottom-left"] {
+  object-position: bottom left;
+}
+
+img[data-focus="bottom"] {
+  object-position: bottom;
+}
+
+img[data-focus="bottom-right"] {
+  object-position: bottom right;
+}
+
+/* Looks are combinable: dim and blur each own a rule, and the pair gets a third rule of
+ * higher specificity (two attribute selectors beats one) rather than a var()-splice. */
+[data-look~="dim"] {
+  filter: brightness(0.55) saturate(0.85);
+}
+
+[data-look~="blur"] {
+  filter: blur(6px);
+}
+
+[data-look~="dim"][data-look~="blur"] {
+  filter: brightness(0.55) saturate(0.85) blur(6px);
+}
+
+.cells[data-layout="caption"] {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto;
+}
+
+.cells[data-layout="caption"] [data-caption-order="media"] {
+  order: 1;
+}
+
+.cells[data-layout="caption"] [data-caption-order="text"] {
+  order: 2;
+  text-align: center;
 }
 
 .cells[data-layout="cover"],

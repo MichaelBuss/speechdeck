@@ -348,6 +348,75 @@ function groupLogicalLines(entries: readonly LogicalLine[]): RawGroup[] {
   return groups;
 }
 
+const FIT_VALUES: readonly Fit[] = ["contain", "crop"];
+const FOCUS_VALUES: readonly Focus[] = [
+  "top-left",
+  "top",
+  "top-right",
+  "left",
+  "center",
+  "right",
+  "bottom-left",
+  "bottom",
+  "bottom-right",
+];
+const LOOK_VALUES: readonly Look[] = ["dim", "blur"];
+const IMAGE_RE = /^!\[([^\]]*)\]\(\s*(\S+?)(?:\s+"([^"]*)")?\s*\)$/;
+
+function parseImageLine(line: string): { alt: string; src: string; title: string } | undefined {
+  const match = IMAGE_RE.exec(line.trim());
+  const src = match?.[2];
+  if (src === undefined) return undefined;
+  return { alt: match?.[1] ?? "", src, title: match?.[3] ?? "" };
+}
+
+/** Tokens are order-sensitive but each optional: background, then contain|crop, then a
+ *  Focus, then any Looks. A token that does not match its position falls through to the
+ *  Looks check, so an out-of-order or unknown token is flagged rather than silently moving
+ *  a later slot earlier. */
+function parseImageTitle(
+  title: string,
+  slideId: string,
+  diagnostics: Diagnostic[],
+): { background: boolean; fit: Fit; focus: Focus; looks: Look[] } {
+  const tokens = title.split(/\s+/).filter((token) => token.length > 0);
+  let i = 0;
+
+  const background = tokens[i] === "background";
+  if (background) i++;
+
+  let fit: Fit | undefined;
+  const fitToken = tokens[i];
+  if (fitToken !== undefined && (FIT_VALUES as readonly string[]).includes(fitToken)) {
+    fit = fitToken as Fit;
+    i++;
+  }
+
+  let focus: Focus = "center";
+  const focusToken = tokens[i];
+  if (focusToken !== undefined && (FOCUS_VALUES as readonly string[]).includes(focusToken)) {
+    focus = focusToken as Focus;
+    i++;
+  }
+
+  const looks: Look[] = [];
+  for (; i < tokens.length; i++) {
+    const token = tokens[i];
+    if (token === undefined) continue;
+    if ((LOOK_VALUES as readonly string[]).includes(token)) {
+      looks.push(token as Look);
+    } else {
+      diagnostics.push({
+        kind: "unknown-image-token",
+        slide: slideId,
+        message: `Unrecognized image title token "${token}".`,
+      });
+    }
+  }
+
+  return { background, fit: fit ?? (background ? "crop" : "contain"), focus, looks };
+}
+
 const HEADING_RE = /^(#{1,6})\s+(.+?)\s*$/;
 const LIST_ITEM_RE = /^\s*(?:[-*+]|\d+\.)\s+(.*)$/;
 const ORDERED_ITEM_RE = /^\s*\d+\.\s+/;
@@ -427,9 +496,14 @@ function buildParagraphHtml(lines: readonly string[]): string {
   return `<p>${inlineHtml(lines.join(" ").trim())}</p>`;
 }
 
-function parseBody(bodyLines: readonly string[]): { cells: Cell[]; speech: Speech } {
+function parseBody(
+  bodyLines: readonly string[],
+  slideId: string,
+  diagnostics: Diagnostic[],
+): { cells: Cell[]; speech: Speech; background?: Image } {
   const cells: Cell[] = [];
   const speechBlocks: SpeechBlock[] = [];
+  let background: Image | undefined;
   for (const group of groupLogicalLines(preprocessLines(bodyLines))) {
     const first = group.lines[0] ?? "";
     const heading = HEADING_RE.exec(first);
@@ -446,6 +520,19 @@ function parseBody(bodyLines: readonly string[]): { cells: Cell[]; speech: Speec
           },
         ],
       });
+      continue;
+    }
+    const imageMatch = parseImageLine(first);
+    if (imageMatch !== undefined) {
+      const {
+        background: isBackground,
+        fit,
+        focus,
+        looks,
+      } = parseImageTitle(imageMatch.title, slideId, diagnostics);
+      const image: Image = { src: imageMatch.src, alt: imageMatch.alt, fit, focus, looks };
+      if (isBackground) background = image;
+      else cells.push({ blocks: [{ kind: "image", ...image }] });
       continue;
     }
     if (isTableGroup(group.lines)) {
@@ -469,7 +556,11 @@ function parseBody(bodyLines: readonly string[]): { cells: Cell[]; speech: Speec
     if (group.promoted) cells.push({ blocks: [{ kind: "prose", html }] });
     else speechBlocks.push({ kind: "paragraph", html });
   }
-  return { cells, speech: { blocks: speechBlocks } };
+  return {
+    cells,
+    speech: { blocks: speechBlocks },
+    ...(background !== undefined ? { background } : {}),
+  };
 }
 
 function buildSlide(
@@ -487,7 +578,7 @@ function buildSlide(
         "enter: connected on the first Slide has no origin; the Arrival is still a hard cut.",
     });
   }
-  const { cells, speech } = parseBody(source.bodyLines);
+  const { cells, speech, background } = parseBody(source.bodyLines, id, diagnostics);
   const auto = autoLayout(cells);
   const layoutField = source.fields["layout"];
   let layout: LayoutName | undefined;
@@ -506,6 +597,7 @@ function buildSlide(
     enter,
     cells,
     speech,
+    ...(background !== undefined ? { background } : {}),
     ...(layout !== undefined ? { layout } : {}),
   };
 }
