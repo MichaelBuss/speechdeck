@@ -13,7 +13,7 @@
     "readyrun": "node scripts/readyrun.mjs"
   },
   "dependencies": {
-    "@readyrun/readyrun": "jsr:^0.1.3"
+    "@readyrun/readyrun": "jsr:^0.1.5"
   },
   "devDependencies": {
     "@tanstack/eslint-plugin-router": "^1.162.0",
