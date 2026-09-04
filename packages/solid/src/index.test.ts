@@ -713,3 +713,69 @@ test("An Embed in a preview is inert: a static placeholder, never a live mount",
   expect(embed?.getAttribute("data-specifier")).toBe("./demos/counter.ts");
   expect(preview.querySelector("iframe")).toBeNull();
 });
+
+test("An Embed on the audience Slide mounts its guest once, handing it the host element and its props", async () => {
+  becomeAudienceWindow();
+  window.history.replaceState(null, "", "/1");
+  const deck = deckFor(
+    "---\ntheme: @speechdeck/themes/harbour\n---\n```embed ./demos/counter.ts\ncount: 3\n```\n",
+  );
+
+  const dispose = vi.fn();
+  const guest = vi.fn(() => ({ dispose, ready: Promise.resolve() }));
+  const loadEmbed = vi.fn(async (specifier: string) => {
+    expect(specifier).toBe("./demos/counter.ts");
+    return guest;
+  });
+
+  const el = Present({ deck, loadEmbed }) as unknown as HTMLElement;
+  await vi.waitFor(() => expect(guest).toHaveBeenCalledTimes(1));
+
+  const host = el.querySelector(".embed");
+  expect(guest).toHaveBeenCalledWith(host, { count: 3 });
+  expect(host?.getAttribute("data-live")).toBe("true");
+  expect(dispose).not.toHaveBeenCalled();
+});
+
+test("A hard cut away from a live Embed disposes its guest before the Cells are rebuilt", async () => {
+  becomeAudienceWindow();
+  window.history.replaceState(null, "", "/1");
+  const deck = deckFor(
+    "---\ntheme: @speechdeck/themes/harbour\n---\n```embed ./demos/counter.ts\n```\n\n---\n\n# Two\n",
+  );
+
+  const dispose = vi.fn();
+  const guest = vi.fn(() => ({ dispose, ready: Promise.resolve() }));
+  const loadEmbed = vi.fn(async () => guest);
+
+  Present({ deck, loadEmbed });
+  await vi.waitFor(() => expect(guest).toHaveBeenCalledTimes(1));
+
+  window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight" }));
+  expect(dispose).toHaveBeenCalledTimes(1);
+});
+
+test("Escape blurs an in-document Embed and returns focus to the Slide", async () => {
+  becomeAudienceWindow();
+  window.history.replaceState(null, "", "/1");
+  const deck = deckFor(
+    "---\ntheme: @speechdeck/themes/harbour\n---\n```embed ./demos/counter.ts\n```\n",
+  );
+
+  const guest = vi.fn(() => ({ dispose: vi.fn(), ready: Promise.resolve() }));
+  const loadEmbed = vi.fn(async () => guest);
+
+  const el = Present({ deck, loadEmbed }) as unknown as HTMLElement;
+  document.body.appendChild(el);
+  await vi.waitFor(() => expect(guest).toHaveBeenCalledTimes(1));
+
+  const host = el.querySelector(".embed") as HTMLElement;
+  host.tabIndex = 0;
+  host.focus();
+  expect(document.activeElement).toBe(host);
+
+  document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+  expect(document.activeElement).toBe(el);
+
+  document.body.removeChild(el);
+});

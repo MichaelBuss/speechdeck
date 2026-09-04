@@ -582,6 +582,47 @@ function isCodeFilePath(path: string): boolean {
   return path.startsWith("./") || path.startsWith("../");
 }
 
+/** A flat `key: value` map only — nesting and multi-line scalars are out of v0 scope, matching
+ *  Frontmatter's own line-at-a-time parsing rather than pulling in a YAML library. */
+function coerceYamlScalar(raw: string): Json {
+  if (raw === "" || raw === "null" || raw === "~") return null;
+  if (raw === "true") return true;
+  if (raw === "false") return false;
+  if (/^-?\d+(\.\d+)?$/.test(raw)) return Number(raw);
+  const doubleQuoted = /^"(.*)"$/.exec(raw);
+  if (doubleQuoted?.[1] !== undefined) return doubleQuoted[1];
+  const singleQuoted = /^'(.*)'$/.exec(raw);
+  if (singleQuoted?.[1] !== undefined) return singleQuoted[1];
+  return raw;
+}
+
+function parseEmbedProps(bodyLines: readonly string[]): Json {
+  const props: Record<string, Json> = {};
+  let any = false;
+  for (const line of bodyLines) {
+    const match = /^([A-Za-z_][\w-]*):\s*(.*)$/.exec(line);
+    const key = match?.[1];
+    const raw = match?.[2];
+    if (key === undefined || raw === undefined) continue;
+    props[key] = coerceYamlScalar(raw.trim());
+    any = true;
+  }
+  return any ? props : null;
+}
+
+/** A specifier is a path relative to the Deck, or a package name — unlike a code Cell's
+ *  path, a bare package name is exactly what an Embed is allowed to be, so no path shape
+ *  is enforced here. */
+function buildEmbedCell(info: string, fenceLines: readonly string[]): Cell {
+  const tokens = info.split(/\s+/).filter((token) => token.length > 0);
+  const specifier = tokens[1];
+  if (specifier === undefined) {
+    throw new Error("An Embed fence needs a module specifier: ```embed <specifier>.");
+  }
+  const props = parseEmbedProps(fenceLines);
+  return { blocks: [{ kind: "embed", specifier, props }] };
+}
+
 function buildCodeCell(
   info: string,
   fenceLines: readonly string[],
@@ -657,7 +698,12 @@ function parseBody(
   let background: Image | undefined;
   for (const segment of splitFenceSegments(bodyLines)) {
     if (segment.kind === "fence") {
-      cells.push(buildCodeCell(segment.info, segment.lines, slideId, files, diagnostics));
+      const fenceLang = segment.info.split(/\s+/, 1)[0];
+      cells.push(
+        fenceLang === "embed"
+          ? buildEmbedCell(segment.info, segment.lines)
+          : buildCodeCell(segment.info, segment.lines, slideId, files, diagnostics),
+      );
       continue;
     }
     for (const group of groupLogicalLines(preprocessLines(segment.lines))) {

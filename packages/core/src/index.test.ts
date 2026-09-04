@@ -606,6 +606,64 @@ test("parseDeck: a blank line inside a fence does not split the code Cell in two
   });
 });
 
+test("parseDeck: an `embed` fence is an Embed Cell carrying a specifier, not a code Cell", () => {
+  const source = "---\ntheme: @speechdeck/themes/harbour\n---\n```embed ./demos/counter.ts\n```\n";
+  const { deck, diagnostics } = parseDeck(source, files);
+
+  expect(diagnostics).toEqual([]);
+  expect(deck.slides[0]?.cells[0]?.blocks[0]).toEqual({
+    kind: "embed",
+    specifier: "./demos/counter.ts",
+    props: null,
+  });
+});
+
+test("parseDeck: an Embed's YAML body becomes its props", () => {
+  const source =
+    '---\ntheme: @speechdeck/themes/harbour\n---\n```embed ./demos/counter.ts\ncount: 3\nlabel: "Starting count"\nenabled: true\n```\n';
+  const { deck } = parseDeck(source, files);
+
+  expect(deck.slides[0]?.cells[0]?.blocks[0]).toMatchObject({
+    kind: "embed",
+    specifier: "./demos/counter.ts",
+    props: { count: 3, label: "Starting count", enabled: true },
+  });
+});
+
+test("parseDeck: an Embed specifier may be a package name — there is no reserved embeds folder", () => {
+  const source = "---\ntheme: @speechdeck/themes/harbour\n---\n```embed some-widget\n```\n";
+  const { deck } = parseDeck(source, files);
+
+  expect(deck.slides[0]?.cells[0]?.blocks[0]).toMatchObject({
+    kind: "embed",
+    specifier: "some-widget",
+  });
+});
+
+test("parseDeck: an Embed at the same path as a file-backed code Cell carries only the path — the code Cell alone holds the bytes, so they cannot drift apart", () => {
+  const codeFiles = filesWith({ "./demos/counter.ts": "let n = 0;\nexport { n };\n" });
+  const source =
+    "---\ntheme: @speechdeck/themes/harbour\n---\n```ts ./demos/counter.ts\n```\n\n```embed ./demos/counter.ts\n```\n";
+  const { deck, diagnostics } = parseDeck(source, codeFiles);
+  const [codeCell, embedCell] = deck.slides[0]?.cells ?? [];
+
+  expect(diagnostics).toEqual([]);
+  expect(codeCell?.blocks[0]).toMatchObject({
+    kind: "code",
+    source: { from: "file", path: "./demos/counter.ts", bytes: "let n = 0;\nexport { n };\n" },
+  });
+  expect(embedCell?.blocks[0]).toEqual({
+    kind: "embed",
+    specifier: "./demos/counter.ts",
+    props: null,
+  });
+});
+
+test("parseDeck: an Embed fence with no specifier does not yield a Deck", () => {
+  const source = "---\ntheme: @speechdeck/themes/harbour\n---\n```embed\n```\n";
+  expect(() => parseDeck(source, files)).toThrow();
+});
+
 test("matchCode is not implemented", () => {
   const block = {
     kind: "code" as const,
