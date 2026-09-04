@@ -8,5 +8,12 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@clack/prompts": "^1.7.0"
+  },
+  "devDependencies": {
+    "@speechdeck/core": "workspace:*",
+    "@types/node": "^26.3.0"
   }
 }

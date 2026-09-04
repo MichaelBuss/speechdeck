@@ -45,7 +45,18 @@ importers:
 
   packages/core: {}
 
-  packages/create: {}
+  packages/create:
+    dependencies:
+      '@clack/prompts':
+        specifier: ^1.7.0
+        version: 1.7.0
+    devDependencies:
+      '@speechdeck/core':
+        specifier: workspace:*
+        version: link:../core
+      '@types/node':
+        specifier: ^26.3.0
+        version: 26.3.0
 
   packages/solid:
     dependencies:
