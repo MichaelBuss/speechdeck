@@ -496,65 +496,222 @@ function buildParagraphHtml(lines: readonly string[]): string {
   return `<p>${inlineHtml(lines.join(" ").trim())}</p>`;
 }
 
+const FENCE_OPEN_RE = /^(`{3,})(.*)$/;
+
+type BodySegment =
+  | { kind: "text"; lines: readonly string[] }
+  | { kind: "fence"; info: string; lines: readonly string[] };
+
+/** A fenced code block is a Cell that stands on its own even when its body has blank lines,
+ *  so fences are pulled out before the blank-line Cell-boundary rule runs on the rest. */
+function splitFenceSegments(bodyLines: readonly string[]): BodySegment[] {
+  const segments: BodySegment[] = [];
+  let text: string[] = [];
+  let i = 0;
+  while (i < bodyLines.length) {
+    const line = bodyLines[i] ?? "";
+    const open = FENCE_OPEN_RE.exec(line);
+    if (open?.[1] === undefined) {
+      text.push(line);
+      i++;
+      continue;
+    }
+    if (text.length > 0) {
+      segments.push({ kind: "text", lines: text });
+      text = [];
+    }
+    const fenceLen = open[1].length;
+    const info = (open[2] ?? "").trim();
+    const codeLines: string[] = [];
+    i++;
+    for (; i < bodyLines.length; i++) {
+      const line2 = bodyLines[i] ?? "";
+      const closeTrim = line2.trim();
+      if (/^`+$/.test(closeTrim) && closeTrim.length >= fenceLen) {
+        i++;
+        break;
+      }
+      codeLines.push(line2);
+    }
+    segments.push({ kind: "fence", info, lines: codeLines });
+  }
+  if (text.length > 0) segments.push({ kind: "text", lines: text });
+  return segments;
+}
+
+const REGION_START_RE = /#region\s+(\S+)/;
+const REGION_END_RE = /#endregion\b/;
+
+type RegionSpan = { name: string; lines: readonly string[] };
+
+/** `#region name` … `#endregion`; a line range is not a Region, so this only ever
+ *  recognizes those exact markers, never numeric spans. */
+function findRegions(content: string): RegionSpan[] {
+  const lines = content.split(/\r?\n/);
+  const stack: { name: string; start: number }[] = [];
+  const spans: RegionSpan[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i] ?? "";
+    const start = REGION_START_RE.exec(line);
+    if (start?.[1] !== undefined) {
+      stack.push({ name: start[1], start: i + 1 });
+      continue;
+    }
+    if (REGION_END_RE.test(line)) {
+      const top = stack.pop();
+      if (top !== undefined) spans.push({ name: top.name, lines: lines.slice(top.start, i) });
+    }
+  }
+  return spans;
+}
+
+function duplicateRegionNames(spans: readonly RegionSpan[]): string[] {
+  const seen = new Set<string>();
+  const duplicates = new Set<string>();
+  for (const span of spans) {
+    if (seen.has(span.name)) duplicates.add(span.name);
+    seen.add(span.name);
+  }
+  return [...duplicates];
+}
+
+/** A code Cell path is a path relative to the Deck, never a package name or a URL —
+ *  those are something you run, not something to read bytes from. */
+function isCodeFilePath(path: string): boolean {
+  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(path)) return false;
+  return path.startsWith("./") || path.startsWith("../");
+}
+
+function buildCodeCell(
+  info: string,
+  fenceLines: readonly string[],
+  slideId: string,
+  files: FileMap,
+  diagnostics: Diagnostic[],
+): Cell {
+  const tokens = info.split(/\s+/).filter((token) => token.length > 0);
+  const lang = tokens[0] ?? "";
+  const pathToken = tokens[1];
+  const body = fenceLines.join("\n");
+
+  if (pathToken === undefined) {
+    const source: CodeSource = { from: "fence", bytes: body };
+    return {
+      blocks: [{ kind: "code", lang, source, html: `<pre><code>${escapeHtml(body)}</code></pre>` }],
+    };
+  }
+
+  if (!isCodeFilePath(pathToken)) {
+    throw new Error(
+      `Code Cell path "${pathToken}" is not a path relative to the Deck; a package name or a URL is not a code path.`,
+    );
+  }
+
+  if (body.trim() !== "") {
+    diagnostics.push({
+      kind: "body-and-path",
+      slide: slideId,
+      message: `Code Cell has both a body and a path "${pathToken}"; a file-backed Cell has an empty body.`,
+    });
+  }
+
+  const hashIndex = pathToken.indexOf("#");
+  const path = hashIndex === -1 ? pathToken : pathToken.slice(0, hashIndex);
+  const region = hashIndex === -1 ? undefined : pathToken.slice(hashIndex + 1);
+
+  const fileContent = files.read(path);
+  const regions = findRegions(fileContent);
+  const duplicates = duplicateRegionNames(regions);
+  if (duplicates.length > 0) {
+    diagnostics.push({
+      kind: "duplicate-region",
+      slide: slideId,
+      message: `Duplicate #region name(s) ${duplicates.join(", ")} in "${path}".`,
+    });
+  }
+
+  let bytes: string;
+  if (region === undefined) {
+    bytes = fileContent;
+  } else {
+    const match = regions.find((span) => span.name === region);
+    if (match === undefined) throw new Error(`No #region "${region}" in "${path}".`);
+    bytes = match.lines.join("\n");
+  }
+
+  const source: CodeSource =
+    region === undefined ? { from: "file", path, bytes } : { from: "file", path, region, bytes };
+  return {
+    blocks: [{ kind: "code", lang, source, html: `<pre><code>${escapeHtml(bytes)}</code></pre>` }],
+  };
+}
+
 function parseBody(
   bodyLines: readonly string[],
   slideId: string,
+  files: FileMap,
   diagnostics: Diagnostic[],
 ): { cells: Cell[]; speech: Speech; background?: Image } {
   const cells: Cell[] = [];
   const speechBlocks: SpeechBlock[] = [];
   let background: Image | undefined;
-  for (const group of groupLogicalLines(preprocessLines(bodyLines))) {
-    const first = group.lines[0] ?? "";
-    const heading = HEADING_RE.exec(first);
-    const depth = heading?.[1]?.length;
-    const text = heading?.[2];
-    if (depth !== undefined && text !== undefined) {
-      cells.push({
-        blocks: [
-          {
-            kind: "heading",
-            depth: depth as 1 | 2 | 3 | 4 | 5 | 6,
-            text: text.trim(),
-            html: escapeHtml(text.trim()),
-          },
-        ],
-      });
+  for (const segment of splitFenceSegments(bodyLines)) {
+    if (segment.kind === "fence") {
+      cells.push(buildCodeCell(segment.info, segment.lines, slideId, files, diagnostics));
       continue;
     }
-    const imageMatch = parseImageLine(first);
-    if (imageMatch !== undefined) {
-      const {
-        background: isBackground,
-        fit,
-        focus,
-        looks,
-      } = parseImageTitle(imageMatch.title, slideId, diagnostics);
-      const image: Image = { src: imageMatch.src, alt: imageMatch.alt, fit, focus, looks };
-      if (isBackground) background = image;
-      else cells.push({ blocks: [{ kind: "image", ...image }] });
-      continue;
-    }
-    if (isTableGroup(group.lines)) {
-      cells.push({ blocks: [{ kind: "table", html: buildTableHtml(group.lines) }] });
-      continue;
-    }
-    if (isListGroup(group.lines)) {
-      const html = buildListHtml(group.lines);
+    for (const group of groupLogicalLines(preprocessLines(segment.lines))) {
+      const first = group.lines[0] ?? "";
+      const heading = HEADING_RE.exec(first);
+      const depth = heading?.[1]?.length;
+      const text = heading?.[2];
+      if (depth !== undefined && text !== undefined) {
+        cells.push({
+          blocks: [
+            {
+              kind: "heading",
+              depth: depth as 1 | 2 | 3 | 4 | 5 | 6,
+              text: text.trim(),
+              html: escapeHtml(text.trim()),
+            },
+          ],
+        });
+        continue;
+      }
+      const imageMatch = parseImageLine(first);
+      if (imageMatch !== undefined) {
+        const {
+          background: isBackground,
+          fit,
+          focus,
+          looks,
+        } = parseImageTitle(imageMatch.title, slideId, diagnostics);
+        const image: Image = { src: imageMatch.src, alt: imageMatch.alt, fit, focus, looks };
+        if (isBackground) background = image;
+        else cells.push({ blocks: [{ kind: "image", ...image }] });
+        continue;
+      }
+      if (isTableGroup(group.lines)) {
+        cells.push({ blocks: [{ kind: "table", html: buildTableHtml(group.lines) }] });
+        continue;
+      }
+      if (isListGroup(group.lines)) {
+        const html = buildListHtml(group.lines);
+        if (group.promoted) cells.push({ blocks: [{ kind: "prose", html }] });
+        else speechBlocks.push({ kind: "list", html });
+        continue;
+      }
+      if (isQuoteGroup(group.lines)) {
+        const html = buildQuoteHtml(group.lines);
+        if (group.promoted) cells.push({ blocks: [{ kind: "prose", html }] });
+        else speechBlocks.push({ kind: "quote", html });
+        continue;
+      }
+      if (group.lines.join(" ").trim() === "") continue;
+      const html = buildParagraphHtml(group.lines);
       if (group.promoted) cells.push({ blocks: [{ kind: "prose", html }] });
-      else speechBlocks.push({ kind: "list", html });
-      continue;
+      else speechBlocks.push({ kind: "paragraph", html });
     }
-    if (isQuoteGroup(group.lines)) {
-      const html = buildQuoteHtml(group.lines);
-      if (group.promoted) cells.push({ blocks: [{ kind: "prose", html }] });
-      else speechBlocks.push({ kind: "quote", html });
-      continue;
-    }
-    if (group.lines.join(" ").trim() === "") continue;
-    const html = buildParagraphHtml(group.lines);
-    if (group.promoted) cells.push({ blocks: [{ kind: "prose", html }] });
-    else speechBlocks.push({ kind: "paragraph", html });
   }
   return {
     cells,
@@ -567,6 +724,7 @@ function buildSlide(
   source: SlideSource,
   id: string,
   isFirst: boolean,
+  files: FileMap,
   diagnostics: Diagnostic[],
 ): Slide {
   const enter: Enter = source.fields["enter"] === "connected" ? "connected" : "cut";
@@ -578,7 +736,7 @@ function buildSlide(
         "enter: connected on the first Slide has no origin; the Arrival is still a hard cut.",
     });
   }
-  const { cells, speech, background } = parseBody(source.bodyLines, id, diagnostics);
+  const { cells, speech, background } = parseBody(source.bodyLines, id, files, diagnostics);
   const auto = autoLayout(cells);
   const layoutField = source.fields["layout"];
   let layout: LayoutName | undefined;
@@ -642,7 +800,7 @@ export function parseDeck(
 
   const diagnostics: Diagnostic[] = [];
   const slides = splitSlideSources(lines.slice(next)).map((source, i) =>
-    buildSlide(source, String(i + 1), i === 0, diagnostics),
+    buildSlide(source, String(i + 1), i === 0, files, diagnostics),
   );
 
   return {

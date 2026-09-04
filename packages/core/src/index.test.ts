@@ -16,6 +16,15 @@ const files: FileMap = {
   },
 };
 
+function filesWith(extra: Record<string, string>): FileMap {
+  return {
+    read(relative) {
+      if (relative in extra) return extra[relative] ?? "";
+      return files.read(relative);
+    },
+  };
+}
+
 test("parseDeck: theme + one H1 heading yields a Cover Slide at address 1", () => {
   const source = "---\ntheme: @speechdeck/themes/harbour\n---\n# Title\n";
   const { deck, diagnostics } = parseDeck(source, files);
@@ -460,6 +469,141 @@ test("resolveFrame: a Background Slide does not consume a step of travel; a Crop
   expect(three.stop).toBe("consumed");
   expect(three.t).toBeGreaterThan(two.t);
   expect(four.t).toBe(1);
+});
+
+test("parseDeck: an inline fence is a code Cell whose bytes come from the fence body", () => {
+  const source = [
+    "---",
+    "theme: @speechdeck/themes/harbour",
+    "---",
+    "```ts",
+    "const x = 1;",
+    "",
+    "const y = 2;",
+    "```",
+  ].join("\n");
+  const { deck, diagnostics } = parseDeck(source, files);
+  const slide = deck.slides[0];
+
+  expect(diagnostics).toEqual([]);
+  expect(slide?.cells).toHaveLength(1);
+  expect(slide?.cells[0]?.blocks[0]).toMatchObject({
+    kind: "code",
+    lang: "ts",
+    source: { from: "fence", bytes: "const x = 1;\n\nconst y = 2;" },
+  });
+  expect(resolveFrame(deck, { to: "1" }).layout).toBe("solo");
+});
+
+test("parseDeck: a fence with no info string is a code Cell with an empty language", () => {
+  const source = "---\ntheme: @speechdeck/themes/harbour\n---\n```\nplain\n```\n";
+  const { deck } = parseDeck(source, files);
+  expect(deck.slides[0]?.cells[0]?.blocks[0]).toMatchObject({
+    kind: "code",
+    lang: "",
+    source: { from: "fence", bytes: "plain" },
+  });
+});
+
+test("parseDeck: a file-backed code Cell is spelled lang, path, empty body", () => {
+  const codeFiles = filesWith({ "./demos/counter.ts": "let n = 0;\nexport { n };\n" });
+  const source = "---\ntheme: @speechdeck/themes/harbour\n---\n```ts ./demos/counter.ts\n```\n";
+  const { deck, diagnostics } = parseDeck(source, codeFiles);
+  const slide = deck.slides[0];
+
+  expect(diagnostics).toEqual([]);
+  expect(slide?.cells[0]?.blocks[0]).toMatchObject({
+    kind: "code",
+    lang: "ts",
+    source: { from: "file", path: "./demos/counter.ts", bytes: "let n = 0;\nexport { n };\n" },
+  });
+});
+
+test("parseDeck: a #region on the path shows only that named span; the marker lines are not shown", () => {
+  const content = [
+    "const before = 1;",
+    "// #region adapter",
+    "function adapter() {}",
+    "// #endregion",
+    "const after = 2;",
+  ].join("\n");
+  const codeFiles = filesWith({ "./demos/counter.ts": content });
+  const source =
+    "---\ntheme: @speechdeck/themes/harbour\n---\n```ts ./demos/counter.ts#adapter\n```\n";
+  const { deck, diagnostics } = parseDeck(source, codeFiles);
+  const slide = deck.slides[0];
+
+  expect(diagnostics).toEqual([]);
+  expect(slide?.cells[0]?.blocks[0]).toMatchObject({
+    kind: "code",
+    source: {
+      from: "file",
+      path: "./demos/counter.ts",
+      region: "adapter",
+      bytes: "function adapter() {}",
+    },
+  });
+});
+
+test("parseDeck: a body and a path together is a Lint; the path still wins", () => {
+  const codeFiles = filesWith({ "./demos/counter.ts": "let n = 0;" });
+  const source =
+    "---\ntheme: @speechdeck/themes/harbour\n---\n```ts ./demos/counter.ts\nconst stray = true;\n```\n";
+  const { deck, diagnostics } = parseDeck(source, codeFiles);
+
+  expect(diagnostics).toHaveLength(1);
+  expect(diagnostics[0]).toMatchObject({ kind: "body-and-path", slide: "1" });
+  expect(deck.slides[0]?.cells[0]?.blocks[0]).toMatchObject({
+    source: { from: "file", path: "./demos/counter.ts", bytes: "let n = 0;" },
+  });
+});
+
+test("parseDeck: duplicate Region names in one file are a Lint", () => {
+  const content = [
+    "// #region adapter",
+    "const a = 1;",
+    "// #endregion",
+    "// #region adapter",
+    "const b = 2;",
+    "// #endregion",
+  ].join("\n");
+  const codeFiles = filesWith({ "./demos/dupes.ts": content });
+  const source =
+    "---\ntheme: @speechdeck/themes/harbour\n---\n```ts ./demos/dupes.ts#adapter\n```\n";
+  const { diagnostics } = parseDeck(source, codeFiles);
+
+  expect(diagnostics).toHaveLength(1);
+  expect(diagnostics[0]).toMatchObject({ kind: "duplicate-region", slide: "1" });
+});
+
+test("parseDeck: a line range is not a Region — an unmatched name throws instead of yielding a Deck", () => {
+  const codeFiles = filesWith({ "./demos/counter.ts": "const x = 1;\nconst y = 2;\n" });
+  const source = "---\ntheme: @speechdeck/themes/harbour\n---\n```ts ./demos/counter.ts#1-2\n```\n";
+  expect(() => parseDeck(source, codeFiles)).toThrow();
+});
+
+test("parseDeck: a code Cell path that is a package name does not yield a Deck", () => {
+  const source = "---\ntheme: @speechdeck/themes/harbour\n---\n```ts lodash\n```\n";
+  expect(() => parseDeck(source, files)).toThrow();
+});
+
+test("parseDeck: a code Cell path that is a URL does not yield a Deck", () => {
+  const source =
+    "---\ntheme: @speechdeck/themes/harbour\n---\n```ts https://example.com/counter.ts\n```\n";
+  expect(() => parseDeck(source, files)).toThrow();
+});
+
+test("parseDeck: a blank line inside a fence does not split the code Cell in two", () => {
+  const source =
+    "---\ntheme: @speechdeck/themes/harbour\n---\n## Heading\n\n```ts\none\n\ntwo\n```\n";
+  const { deck } = parseDeck(source, files);
+  const slide = deck.slides[0];
+
+  expect(slide?.cells).toHaveLength(2);
+  expect(slide?.cells[1]?.blocks[0]).toMatchObject({
+    kind: "code",
+    source: { from: "fence", bytes: "one\n\ntwo" },
+  });
 });
 
 test("matchCode is not implemented", () => {
