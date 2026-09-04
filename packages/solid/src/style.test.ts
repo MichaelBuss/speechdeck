@@ -56,3 +56,11 @@ test("engine CSS arranges Caption without needing theme.css", () => {
   expect(css).toContain('[data-caption-order="media"]');
   expect(css).toContain('[data-caption-order="text"]');
 });
+
+test("engine CSS paints the travelling background and the fg/title/font handles without needing theme.css", () => {
+  expect(css).toContain("background: var(--sd-bg)");
+  expect(css).toContain("color: var(--sd-fg)");
+  expect(css).toContain("font-family: var(--sd-font-body)");
+  expect(css).toContain("color: var(--sd-title)");
+  expect(css).toContain("font-family: var(--sd-font-title)");
+});

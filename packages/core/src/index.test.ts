@@ -416,6 +416,52 @@ test("parseDeck: H4 + image, either order, auto-picks Caption; the Caption text 
   expect(resolveFrame(deckB, { to: "1" }).layout).toBe("caption");
 });
 
+test("resolveFrame: travel t advances across participating Slides and does not reset on a hard cut", () => {
+  const source =
+    "---\ntheme: @speechdeck/themes/harbour\n---\n# One\n---\n## Two\n---\n## Three\n---\n## Four\n";
+  const { deck } = parseDeck(source, files);
+
+  // Every enter defaults to cut, so every Arrival below is a hard cut; t still climbs
+  // to 1 instead of resetting to 0 at each Slide.
+  expect(resolveFrame(deck, { to: "1" }).t).toBe(0);
+  expect(resolveFrame(deck, { to: "2" }).t).toBeCloseTo(1 / 3);
+  expect(resolveFrame(deck, { to: "3" }).t).toBeCloseTo(2 / 3);
+  expect(resolveFrame(deck, { to: "4" }).t).toBe(1);
+
+  // t is a fact about the destination Slide alone; the Arrival's origin does not shift it.
+  expect(resolveFrame(deck, { to: "3", from: "2" }).t).toBe(resolveFrame(deck, { to: "3" }).t);
+});
+
+test("resolveFrame: a Background Slide does not consume a step of travel; a Crop Cell still does", () => {
+  const source = [
+    "---",
+    "theme: @speechdeck/themes/harbour",
+    "---",
+    "# One",
+    "---",
+    "## Two",
+    "",
+    '![skyline](./skyline.jpg "background")',
+    "---",
+    '![a dog](./dog.jpg "crop")',
+    "---",
+    "## Four",
+  ].join("\n");
+  const { deck } = parseDeck(source, files);
+
+  const one = resolveFrame(deck, { to: "1" });
+  const two = resolveFrame(deck, { to: "2" });
+  const three = resolveFrame(deck, { to: "3" });
+  const four = resolveFrame(deck, { to: "4" });
+
+  expect(one.stop).toBe("consumed");
+  expect(two.stop).toBe("skipped");
+  expect(two.t).toBe(one.t);
+  expect(three.stop).toBe("consumed");
+  expect(three.t).toBeGreaterThan(two.t);
+  expect(four.t).toBe(1);
+});
+
 test("matchCode is not implemented", () => {
   const block = {
     kind: "code" as const,
