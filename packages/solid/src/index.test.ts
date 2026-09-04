@@ -127,6 +127,74 @@ test("Present, opened as the audience window, paints a table as a Solo Cell", ()
   expect(cell?.querySelector("table")).not.toBeNull();
 });
 
+test("Present, opened as the audience window, reflows two/three/four+ Cells as Split-2/Split-3/Grid", () => {
+  becomeAudienceWindow();
+  window.history.replaceState(null, "", "/1");
+  const deck = deckFor(
+    [
+      "---",
+      "theme: @speechdeck/themes/harbour",
+      "---",
+      "<!--on-->",
+      "One.",
+      "",
+      "<!--on-->",
+      "Two.",
+      "---",
+      "<!--on-->",
+      "One.",
+      "",
+      "<!--on-->",
+      "Two.",
+      "",
+      "<!--on-->",
+      "Three.",
+      "---",
+      "<!--on-->",
+      "One.",
+      "",
+      "<!--on-->",
+      "Two.",
+      "",
+      "<!--on-->",
+      "Three.",
+      "",
+      "<!--on-->",
+      "Four.",
+    ].join("\n"),
+  );
+
+  const el = Present({ deck }) as unknown as HTMLElement;
+  const cells = () => el.querySelector(".cells") as HTMLElement;
+
+  expect(cells().dataset["layout"]).toBe("split-2");
+  expect(cells().dataset["items"]).toBe("2");
+  expect(cells().querySelectorAll(".cell")).toHaveLength(2);
+
+  window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight" }));
+  expect(cells().dataset["layout"]).toBe("split-3");
+  expect(cells().dataset["items"]).toBe("3");
+
+  window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight" }));
+  expect(cells().dataset["layout"]).toBe("grid");
+  expect(cells().dataset["items"]).toBe("4");
+});
+
+test("Present, opened as the audience window, honours an impossible layout: override by rendering the auto pick", () => {
+  becomeAudienceWindow();
+  window.history.replaceState(null, "", "/1");
+  const { deck, diagnostics } = parseDeck(
+    "---\ntheme: @speechdeck/themes/harbour\n---\nlayout: grid\n<!--on-->\nOne.\n\n<!--on-->\nTwo.\n",
+    files,
+  );
+
+  expect(diagnostics).toHaveLength(1);
+  expect(diagnostics[0]?.kind).toBe("impossible-layout");
+
+  const el = Present({ deck }) as unknown as HTMLElement;
+  expect(el.dataset["layout"]).toBe("split-2");
+});
+
 test("Present, opened as the audience window, never paints Speech onto the Slide", () => {
   becomeAudienceWindow();
   window.history.replaceState(null, "", "/");

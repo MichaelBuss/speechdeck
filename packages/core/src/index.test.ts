@@ -259,6 +259,81 @@ test("parseDeck: a table is a Cell and auto-picks Solo", () => {
   expect(resolveFrame(deck, { to: "1" }).layout).toBe("solo");
 });
 
+test("parseDeck: two Cells auto-pick Split-2", () => {
+  const source =
+    "---\ntheme: @speechdeck/themes/harbour\n---\n<!--on-->\nOne.\n\n<!--on-->\nTwo.\n";
+  const { deck } = parseDeck(source, files);
+  expect(deck.slides[0]?.cells).toHaveLength(2);
+  const frame = resolveFrame(deck, { to: "1" });
+  expect(frame.layout).toBe("split-2");
+  expect(frame.layoutAuto).toBe("split-2");
+});
+
+test("parseDeck: three Cells auto-pick Split-3", () => {
+  const source =
+    "---\ntheme: @speechdeck/themes/harbour\n---\n<!--on-->\nOne.\n\n<!--on-->\nTwo.\n\n<!--on-->\nThree.\n";
+  const { deck } = parseDeck(source, files);
+  expect(deck.slides[0]?.cells).toHaveLength(3);
+  const frame = resolveFrame(deck, { to: "1" });
+  expect(frame.layout).toBe("split-3");
+  expect(frame.layoutAuto).toBe("split-3");
+});
+
+test("parseDeck: four or more Cells auto-pick Grid", () => {
+  const source =
+    "---\ntheme: @speechdeck/themes/harbour\n---\n<!--on-->\nOne.\n\n<!--on-->\nTwo.\n\n<!--on-->\nThree.\n\n<!--on-->\nFour.\n";
+  const { deck } = parseDeck(source, files);
+  expect(deck.slides[0]?.cells).toHaveLength(4);
+  const frame = resolveFrame(deck, { to: "1" });
+  expect(frame.layout).toBe("grid");
+  expect(frame.layoutAuto).toBe("grid");
+});
+
+test("parseDeck: a Slide layout: override wins when possible; layoutAuto still names the auto pick", () => {
+  const source = "---\ntheme: @speechdeck/themes/harbour\n---\nlayout: cover\n## Section heading\n";
+  const { deck, diagnostics } = parseDeck(source, files);
+
+  expect(diagnostics).toEqual([]);
+  expect(deck.slides[0]?.layout).toBe("cover");
+  const frame = resolveFrame(deck, { to: "1" });
+  expect(frame.layout).toBe("cover");
+  expect(frame.layoutAuto).toBe("section");
+  expect(frame.layoutSource).toBe("override");
+});
+
+test("parseDeck: an impossible layout override is a Lint; auto still renders; layoutSource stays override", () => {
+  const source =
+    "---\ntheme: @speechdeck/themes/harbour\n---\nlayout: grid\n<!--on-->\nOne.\n\n<!--on-->\nTwo.\n";
+  const { deck, diagnostics } = parseDeck(source, files);
+
+  expect(diagnostics).toHaveLength(1);
+  expect(diagnostics[0]).toMatchObject({ kind: "impossible-layout", slide: "1" });
+  expect(deck.slides[0]?.layout).toBe("grid");
+
+  const frame = resolveFrame(deck, { to: "1" });
+  expect(frame.layout).toBe("split-2");
+  expect(frame.layoutAuto).toBe("split-2");
+  expect(frame.layoutSource).toBe("override");
+});
+
+test("parseDeck: a Slide with no layout: field has no layout key at all — empty Frontmatter is omitted", () => {
+  const source = "---\ntheme: @speechdeck/themes/harbour\n---\n# Title\n";
+  const { deck } = parseDeck(source, files);
+  expect("layout" in (deck.slides[0] ?? {})).toBe(false);
+});
+
+test("parseDeck: theme, appearance, and motion are Deck-only — a Slide cannot set them", () => {
+  const source =
+    "---\ntheme: @speechdeck/themes/harbour\n---\ntheme: @speechdeck/themes/ink\n\n# Title\n";
+  const { deck } = parseDeck(source, files);
+  expect(deck.theme).toBe("@speechdeck/themes/harbour");
+  expect(deck.slides[0]?.cells).toHaveLength(1);
+  expect(deck.slides[0]?.cells[0]).toMatchObject({
+    blocks: [{ kind: "heading", text: "Title" }],
+  });
+  expect(deck.slides[0]?.speech.blocks[0]?.html).toContain("@speechdeck/themes/ink");
+});
+
 test("matchCode is not implemented", () => {
   const block = {
     kind: "code" as const,
