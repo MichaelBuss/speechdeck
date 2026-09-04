@@ -300,30 +300,138 @@ function splitSlideSources(bodyLines: readonly string[]): SlideSource[] {
   });
 }
 
-function groupParagraphs(lines: readonly string[]): string[][] {
-  const groups: string[][] = [];
-  let current: string[] = [];
-  for (const line of lines) {
-    if (line.trim() === "") {
-      if (current.length > 0) {
-        groups.push(current);
-        current = [];
-      }
-    } else {
-      current.push(line);
+/** Any HTML comment other than the exact `<!--on-->` line is a Comment: dropped before
+ *  grouping so it never opens a Cell boundary and never surfaces in Speech or a Cell. */
+type LogicalLine = { text: string } | { promote: true };
+
+function preprocessLines(bodyLines: readonly string[]): LogicalLine[] {
+  const out: LogicalLine[] = [];
+  for (const raw of bodyLines) {
+    if (raw.trim() === "<!--on-->") {
+      out.push({ promote: true });
+      continue;
     }
+    const stripped = raw.replace(/<!--[\s\S]*?-->/g, "");
+    if (raw.trim() !== "" && stripped.trim() === "") continue;
+    out.push({ text: stripped });
   }
-  if (current.length > 0) groups.push(current);
+  return out;
+}
+
+type RawGroup = { lines: string[]; promoted: boolean };
+
+/** A blank line starts a new Cell; a dangling `<!--on-->` with no adjacent block is a no-op. */
+function groupLogicalLines(entries: readonly LogicalLine[]): RawGroup[] {
+  const groups: RawGroup[] = [];
+  let current: string[] = [];
+  let currentPromoted = false;
+  let pendingPromote = false;
+  for (const entry of entries) {
+    if ("promote" in entry) {
+      pendingPromote = true;
+      continue;
+    }
+    if (entry.text.trim() === "") {
+      if (current.length > 0) {
+        groups.push({ lines: current, promoted: currentPromoted });
+        current = [];
+        currentPromoted = false;
+      }
+      pendingPromote = false;
+      continue;
+    }
+    if (current.length === 0) currentPromoted = pendingPromote;
+    pendingPromote = false;
+    current.push(entry.text);
+  }
+  if (current.length > 0) groups.push({ lines: current, promoted: currentPromoted });
   return groups;
 }
 
 const HEADING_RE = /^(#{1,6})\s+(.+?)\s*$/;
+const LIST_ITEM_RE = /^\s*(?:[-*+]|\d+\.)\s+(.*)$/;
+const ORDERED_ITEM_RE = /^\s*\d+\.\s+/;
+const QUOTE_LINE_RE = /^\s*>\s?(.*)$/;
+const TABLE_SEPARATOR_RE = /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/;
+const MARK_RE = /<mark(?: data-mark="([a-z-]+)")?>([\s\S]*?)<\/mark>/g;
+const MARK_TYPES = new Set(["underline", "circle", "highlight", "box", "strike-through"]);
+
+/** Preserves valid `<mark>` / `<mark data-mark="...">` spans verbatim; everything else,
+ *  including an unrecognized data-mark value, is escaped as plain text. */
+function inlineHtml(text: string): string {
+  let result = "";
+  let lastIndex = 0;
+  for (const match of text.matchAll(MARK_RE)) {
+    const type = match[1];
+    if (type !== undefined && !MARK_TYPES.has(type)) continue;
+    const start = match.index;
+    result += escapeHtml(text.slice(lastIndex, start));
+    const openTag = type === undefined ? "<mark>" : `<mark data-mark="${type}">`;
+    result += `${openTag}${escapeHtml(match[2] ?? "")}</mark>`;
+    lastIndex = start + match[0].length;
+  }
+  result += escapeHtml(text.slice(lastIndex));
+  return result;
+}
+
+function isTableGroup(lines: readonly string[]): boolean {
+  const header = lines[0];
+  const separator = lines[1];
+  if (header === undefined || separator === undefined) return false;
+  return header.includes("|") && separator.includes("-") && TABLE_SEPARATOR_RE.test(separator);
+}
+
+function splitTableRow(line: string): string[] {
+  let trimmed = line.trim();
+  if (trimmed.startsWith("|")) trimmed = trimmed.slice(1);
+  if (trimmed.endsWith("|")) trimmed = trimmed.slice(0, -1);
+  return trimmed.split("|").map((cell) => cell.trim());
+}
+
+function buildTableHtml(lines: readonly string[]): string {
+  const header = splitTableRow(lines[0] ?? "");
+  const rows = lines.slice(2).map(splitTableRow);
+  const thead = `<thead><tr>${header.map((cell) => `<th>${inlineHtml(cell)}</th>`).join("")}</tr></thead>`;
+  const tbody = `<tbody>${rows
+    .map((row) => `<tr>${row.map((cell) => `<td>${inlineHtml(cell)}</td>`).join("")}</tr>`)
+    .join("")}</tbody>`;
+  return `<table>${thead}${tbody}</table>`;
+}
+
+function isListGroup(lines: readonly string[]): boolean {
+  return lines.every((line) => LIST_ITEM_RE.test(line));
+}
+
+function buildListHtml(lines: readonly string[]): string {
+  const tag = ORDERED_ITEM_RE.test(lines[0] ?? "") ? "ol" : "ul";
+  const items = lines
+    .map((line) => (LIST_ITEM_RE.exec(line)?.[1] ?? "").trim())
+    .map((item) => `<li>${inlineHtml(item)}</li>`)
+    .join("");
+  return `<${tag}>${items}</${tag}>`;
+}
+
+function isQuoteGroup(lines: readonly string[]): boolean {
+  return lines.every((line) => QUOTE_LINE_RE.test(line));
+}
+
+function buildQuoteHtml(lines: readonly string[]): string {
+  const text = lines
+    .map((line) => QUOTE_LINE_RE.exec(line)?.[1] ?? "")
+    .join(" ")
+    .trim();
+  return `<blockquote><p>${inlineHtml(text)}</p></blockquote>`;
+}
+
+function buildParagraphHtml(lines: readonly string[]): string {
+  return `<p>${inlineHtml(lines.join(" ").trim())}</p>`;
+}
 
 function parseBody(bodyLines: readonly string[]): { cells: Cell[]; speech: Speech } {
   const cells: Cell[] = [];
   const speechBlocks: SpeechBlock[] = [];
-  for (const paragraph of groupParagraphs(bodyLines)) {
-    const first = paragraph[0] ?? "";
+  for (const group of groupLogicalLines(preprocessLines(bodyLines))) {
+    const first = group.lines[0] ?? "";
     const heading = HEADING_RE.exec(first);
     const depth = heading?.[1]?.length;
     const text = heading?.[2];
@@ -338,12 +446,28 @@ function parseBody(bodyLines: readonly string[]): { cells: Cell[]; speech: Speec
           },
         ],
       });
-    } else {
-      const text2 = paragraph.join(" ").trim();
-      if (text2 !== "") {
-        speechBlocks.push({ kind: "paragraph", html: `<p>${escapeHtml(text2)}</p>` });
-      }
+      continue;
     }
+    if (isTableGroup(group.lines)) {
+      cells.push({ blocks: [{ kind: "table", html: buildTableHtml(group.lines) }] });
+      continue;
+    }
+    if (isListGroup(group.lines)) {
+      const html = buildListHtml(group.lines);
+      if (group.promoted) cells.push({ blocks: [{ kind: "prose", html }] });
+      else speechBlocks.push({ kind: "list", html });
+      continue;
+    }
+    if (isQuoteGroup(group.lines)) {
+      const html = buildQuoteHtml(group.lines);
+      if (group.promoted) cells.push({ blocks: [{ kind: "prose", html }] });
+      else speechBlocks.push({ kind: "quote", html });
+      continue;
+    }
+    if (group.lines.join(" ").trim() === "") continue;
+    const html = buildParagraphHtml(group.lines);
+    if (group.promoted) cells.push({ blocks: [{ kind: "prose", html }] });
+    else speechBlocks.push({ kind: "paragraph", html });
   }
   return { cells, speech: { blocks: speechBlocks } };
 }

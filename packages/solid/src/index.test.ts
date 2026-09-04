@@ -97,6 +97,36 @@ test("Present, opened as the audience window, paints a Cover Slide at / with Har
   expect(heading?.getAttribute("data-align")).toBe("center");
 });
 
+test("Present, opened as the audience window, paints a promoted paragraph (with a Mark) as a Solo Cell", () => {
+  becomeAudienceWindow();
+  window.history.replaceState(null, "", "/");
+  const deck = deckFor(
+    '---\ntheme: @speechdeck/themes/harbour\n---\n<!--on-->\nGo <mark data-mark="circle">now</mark>.\n',
+  );
+
+  const el = Present({ deck }) as unknown as HTMLElement;
+  expect(el.dataset["layout"]).toBe("solo");
+  const cell = el.querySelector(".cell");
+  expect(cell?.getAttribute("data-kind")).toBe("prose");
+  const mark = cell?.querySelector("mark");
+  expect(mark?.getAttribute("data-mark")).toBe("circle");
+  expect(mark?.textContent).toBe("now");
+});
+
+test("Present, opened as the audience window, paints a table as a Solo Cell", () => {
+  becomeAudienceWindow();
+  window.history.replaceState(null, "", "/");
+  const deck = deckFor(
+    "---\ntheme: @speechdeck/themes/harbour\n---\n| a | b |\n| - | - |\n| 1 | 2 |\n",
+  );
+
+  const el = Present({ deck }) as unknown as HTMLElement;
+  expect(el.dataset["layout"]).toBe("solo");
+  const cell = el.querySelector(".cell");
+  expect(cell?.getAttribute("data-kind")).toBe("table");
+  expect(cell?.querySelector("table")).not.toBeNull();
+});
+
 test("Present, opened as the audience window, never paints Speech onto the Slide", () => {
   becomeAudienceWindow();
   window.history.replaceState(null, "", "/");

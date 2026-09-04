@@ -1,0 +1,49 @@
+/* Engine CSS: complete without theme.css. A Theme that ships only theme.json still shows
+ * Marks — this file is the only place that paints them, consuming the --sd-* handles a
+ * Theme's tokens set (see ADR 0004, ADR 0010). Public DOM: mark[data-mark]. */
+
+mark {
+  background: none;
+  color: inherit;
+  padding: 0 0.05em;
+}
+
+mark:not([data-mark]),
+mark[data-mark="underline"] {
+  background-image: linear-gradient(
+    var(--sd-accent-1, currentColor),
+    var(--sd-accent-1, currentColor)
+  );
+  background-repeat: no-repeat;
+  background-position: 0 100%;
+  background-size: 100% 0.12em;
+}
+
+mark[data-mark="circle"] {
+  position: relative;
+}
+
+mark[data-mark="circle"]::before {
+  content: "";
+  position: absolute;
+  inset: -0.15em -0.3em;
+  border: 0.08em solid var(--sd-accent-2, currentColor);
+  border-radius: 45% 55% 60% 40% / 50% 45% 55% 50%;
+  pointer-events: none;
+}
+
+mark[data-mark="highlight"] {
+  background-color: color-mix(in oklab, var(--sd-accent-3, currentColor) 35%, transparent);
+  border-radius: 0.15em;
+}
+
+mark[data-mark="box"] {
+  border: 0.08em solid var(--sd-accent-4, currentColor);
+  border-radius: 0.2em;
+}
+
+mark[data-mark="strike-through"] {
+  text-decoration: line-through;
+  text-decoration-color: var(--sd-accent-1, currentColor);
+  text-decoration-thickness: 0.12em;
+}
