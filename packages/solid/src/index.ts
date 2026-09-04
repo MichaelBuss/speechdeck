@@ -4,6 +4,8 @@ import {
   type Arrival,
   type Cell,
   type Deck,
+  type EmbedBlock,
+  type EmbedGuest,
   type Frame,
   type Image,
   type Slide as SlideDoc,
@@ -17,7 +19,22 @@ type ParentProps<P = Record<string, never>> = P & {
   children?: Solid.JSX.Element;
 };
 
-type DeckContextValue = { deck: Deck };
+export type LoadEmbed = (specifier: string) => Promise<EmbedGuest<HTMLElement>>;
+
+/** Zero framework adapters: a bare native dynamic import, no bundler-specific resolution
+ *  shim in the framework. A specifier that is not import-resolvable is the app's problem
+ *  to fix (relative to the Deck, or a dependency it already has), not this hook's. */
+const defaultLoadEmbed: LoadEmbed = async (specifier) => {
+  const mod = (await import(/* @vite-ignore */ specifier)) as {
+    default?: EmbedGuest<HTMLElement>;
+  };
+  if (typeof mod.default !== "function") {
+    throw new Error(`Embed "${specifier}" has no default export guest.`);
+  }
+  return mod.default;
+};
+
+type DeckContextValue = { deck: Deck; loadEmbed: LoadEmbed };
 let deckContext: DeckContextValue | undefined;
 
 function requireDeckCtx(name: string): DeckContextValue {
@@ -25,8 +42,10 @@ function requireDeckCtx(name: string): DeckContextValue {
   return deckContext;
 }
 
-export function DeckProvider(props: ParentProps<{ deck: Deck }>): Solid.JSX.Element {
-  deckContext = { deck: props.deck };
+export function DeckProvider(
+  props: ParentProps<{ deck: Deck; loadEmbed?: LoadEmbed }>,
+): Solid.JSX.Element {
+  deckContext = { deck: props.deck, loadEmbed: props.loadEmbed ?? defaultLoadEmbed };
   return (props.children ?? null) as Solid.JSX.Element;
 }
 
@@ -111,7 +130,44 @@ function renderBackdrop(image: Image): HTMLElement {
   return backdrop;
 }
 
-function renderCell(cell: Cell): HTMLElement {
+const EMBED_DISPOSE = Symbol("sd-embed-dispose");
+type EmbedHost = HTMLElement & { [EMBED_DISPOSE]?: () => void };
+
+/** The framework owns exactly one element per Embed and never reparents it: `host` is
+ *  created once by renderCell and handed to the guest; only dispose() ever touches it
+ *  again, and only to tear the guest down before the host itself is discarded. */
+function mountEmbedLive(host: HTMLElement, block: EmbedBlock, loadEmbed: LoadEmbed): void {
+  host.dataset["live"] = "true";
+  let torn = false;
+  let disposeGuest: (() => void) | undefined;
+  (host as EmbedHost)[EMBED_DISPOSE] = () => {
+    torn = true;
+    disposeGuest?.();
+  };
+  loadEmbed(block.specifier)
+    .then((mount) => {
+      if (torn) return;
+      const guest = mount(host, block.props);
+      disposeGuest = guest.dispose;
+      void guest.ready;
+    })
+    .catch(() => {
+      // A guest that fails to load leaves the host empty rather than failing the Slide.
+    });
+}
+
+/** Called before a live `.slide` discards its Cells (on repaint or teardown) so a running
+ *  guest is disposed rather than orphaned. Preview hosts never carry a dispose, so this
+ *  is a no-op for `.embed` elements rendered inert. */
+function disposeEmbedsWithin(root: HTMLElement): void {
+  for (const host of root.querySelectorAll<HTMLElement>(".embed[data-live]")) {
+    const embedHost = host as EmbedHost;
+    embedHost[EMBED_DISPOSE]?.();
+    delete embedHost[EMBED_DISPOSE];
+  }
+}
+
+function renderCell(cell: Cell, mode: "live" | "preview", loadEmbed: LoadEmbed): HTMLElement {
   const cellEl = document.createElement("div");
   cellEl.className = "cell";
   const block = cell.blocks[0];
@@ -126,15 +182,14 @@ function renderCell(cell: Cell): HTMLElement {
     cellEl.dataset["kind"] = "image";
     cellEl.appendChild(renderImage(block));
   }
-  // A live Embed guest is future scope (no mount hook exists yet); this placeholder is
-  // rendered identically in Slide's live and preview modes, so a preview can never
-  // become live by accident once mounting ships.
   if (cell.blocks.length === 1 && block?.kind === "embed") {
     cellEl.dataset["kind"] = "embed";
     const embed = document.createElement("div");
     embed.className = "embed";
     embed.dataset["specifier"] = block.specifier;
-    embed.textContent = block.fallback ?? "Embed";
+    // A preview is never a live mount — running the guest there would run it twice.
+    if (mode === "live") mountEmbedLive(embed, block, loadEmbed);
+    else embed.textContent = block.fallback ?? "Embed";
     cellEl.appendChild(embed);
   }
   if (cell.blocks.length === 1 && (block?.kind === "prose" || block?.kind === "table")) {
@@ -154,13 +209,13 @@ function slideLabel(slide: SlideDoc): string {
 
 /** Caption pairs an H4 Cell with an image Cell in either source order; data-caption-order
  *  fixes media-then-text visually via CSS `order`, independent of which came first. */
-function buildCellsEl(frame: Frame): HTMLElement {
+function buildCellsEl(frame: Frame, mode: "live" | "preview", loadEmbed: LoadEmbed): HTMLElement {
   const cellsEl = document.createElement("div");
   cellsEl.className = "cells";
   cellsEl.dataset["layout"] = frame.layout;
   cellsEl.dataset["items"] = String(frame.slide.cells.length);
   for (const cell of frame.slide.cells) {
-    const cellEl = renderCell(cell);
+    const cellEl = renderCell(cell, mode, loadEmbed);
     if (frame.layout === "caption") {
       const block = cell.blocks[0];
       cellEl.dataset["captionOrder"] =
@@ -177,14 +232,17 @@ function applyFrameChrome(
   frame: Frame,
   tokens: ThemeTokens,
   appearance: Appearance,
+  mode: "live" | "preview",
+  loadEmbed: LoadEmbed = defaultLoadEmbed,
 ): void {
+  disposeEmbedsWithin(slideEl);
   slideEl.dataset["layout"] = frame.layout;
   slideEl.dataset["enter"] = frame.enter;
   slideEl.setAttribute("aria-label", slideLabel(frame.slide));
   paintSlide(slideEl, tokens, appearance, frame.t);
   const children: HTMLElement[] = [];
   if (frame.slide.background !== undefined) children.push(renderBackdrop(frame.slide.background));
-  children.push(buildCellsEl(frame));
+  children.push(buildCellsEl(frame, mode, loadEmbed));
   slideEl.replaceChildren(...children);
 }
 
@@ -193,18 +251,46 @@ function paintFrame(
   frame: Frame,
   tokens: ThemeTokens,
   appearance: Appearance,
+  loadEmbed: LoadEmbed,
 ): void {
-  applyFrameChrome(slideEl, frame, tokens, appearance);
+  applyFrameChrome(slideEl, frame, tokens, appearance, "live", loadEmbed);
   if (typeof document !== "undefined") {
     document.title = `${frame.slide.id} · ${slideLabel(frame.slide)}`;
   }
 }
 
-function renderFrame(frame: Frame, tokens: ThemeTokens, appearance: Appearance): HTMLElement {
+/** Escape blurs an in-document Embed and focuses the Slide (ADR 0016); `tabIndex = -1` makes
+ *  that focus programmatically reachable without adding the Slide to the natural tab order. */
+function focusSlideOnEscape(slideEl: HTMLElement): () => void {
+  slideEl.tabIndex = -1;
+  function onKeydown(event: KeyboardEvent): void {
+    if (event.key !== "Escape") return;
+    const active = document.activeElement;
+    if (active === null || active === slideEl || !slideEl.contains(active)) return;
+    (active as HTMLElement).blur();
+    slideEl.focus();
+  }
+  document.addEventListener("keydown", onKeydown);
+  return () => document.removeEventListener("keydown", onKeydown);
+}
+
+function renderFrame(
+  frame: Frame,
+  tokens: ThemeTokens,
+  appearance: Appearance,
+  loadEmbed: LoadEmbed,
+): { el: HTMLElement; dispose: () => void } {
   const slideEl = document.createElement("main");
   slideEl.className = "slide";
-  paintFrame(slideEl, frame, tokens, appearance);
-  return slideEl;
+  paintFrame(slideEl, frame, tokens, appearance, loadEmbed);
+  const disposeEscape = focusSlideOnEscape(slideEl);
+  return {
+    el: slideEl,
+    dispose: () => {
+      disposeEscape();
+      disposeEmbedsWithin(slideEl);
+    },
+  };
 }
 
 const PRESENTER_VIEW_CHANNEL = "speechdeck-presenter-view";
@@ -321,7 +407,7 @@ function renderPreview(
     const vp = viewport();
     stage.style.width = `${vp.width}px`;
     stage.style.height = `${vp.height}px`;
-    applyFrameChrome(stage, frame, tokens, appearance);
+    applyFrameChrome(stage, frame, tokens, appearance, "preview");
     frameEl.replaceChildren(sizer);
     fit(vp);
   }
@@ -350,8 +436,9 @@ type PresenterSessionOptions = {
 function mountPresenterSession(
   deck: Deck,
   options: PresenterSessionOptions,
+  loadEmbed: LoadEmbed = defaultLoadEmbed,
 ): { root: HTMLElement; dispose: () => void } {
-  DeckProvider({ deck });
+  DeckProvider({ deck, loadEmbed });
 
   let current = currentAddress();
   let frame = resolveFrame(deck, { to: current });
@@ -479,13 +566,17 @@ function mountPresenterSession(
 
 let disposeRehearse: (() => void) | undefined;
 
-export function Rehearse(props: { deck: Deck }): Solid.JSX.Element {
+export function Rehearse(props: { deck: Deck; loadEmbed?: LoadEmbed }): Solid.JSX.Element {
   disposeRehearse?.();
-  const { root, dispose } = mountPresenterSession(props.deck, {
-    className: "rehearse",
-    composition: "rehearse",
-    lead: false,
-  });
+  const { root, dispose } = mountPresenterSession(
+    props.deck,
+    {
+      className: "rehearse",
+      composition: "rehearse",
+      lead: false,
+    },
+    props.loadEmbed,
+  );
   disposeRehearse = dispose;
   return root as unknown as Solid.JSX.Element;
 }
@@ -497,28 +588,38 @@ let disposePresent: (() => void) | undefined;
  * popup — recognized by `window.name`) — then it is that Slide: keyboard-operable, the URL
  * plus BroadcastChannel is the sync, and either side may lead.
  */
-export function Present(props: { deck: Deck }): Solid.JSX.Element {
+export function Present(props: { deck: Deck; loadEmbed?: LoadEmbed }): Solid.JSX.Element {
   disposePresent?.();
 
   const isAudience = typeof window !== "undefined" && window.name === AUDIENCE_WINDOW_NAME;
   if (!isAudience) {
-    const { root, dispose } = mountPresenterSession(props.deck, {
-      className: "present",
-      composition: "present",
-      lead: true,
-    });
+    const { root, dispose } = mountPresenterSession(
+      props.deck,
+      {
+        className: "present",
+        composition: "present",
+        lead: true,
+      },
+      props.loadEmbed,
+    );
     disposePresent = dispose;
     return root as unknown as Solid.JSX.Element;
   }
 
+  const loadEmbed = props.loadEmbed ?? defaultLoadEmbed;
   let current = currentAddress();
   const frame = resolveFrame(props.deck, { to: current });
-  const el = renderFrame(frame, props.deck.tokens, props.deck.appearance);
+  const { el, dispose: disposeFrame } = renderFrame(
+    frame,
+    props.deck.tokens,
+    props.deck.appearance,
+    loadEmbed,
+  );
 
   function arrive(to: string): void {
     const arrival: Arrival = { to, from: current };
     const next = resolveFrame(props.deck, arrival);
-    paintFrame(el, next, props.deck.tokens, props.deck.appearance);
+    paintFrame(el, next, props.deck.tokens, props.deck.appearance, loadEmbed);
     current = to;
   }
 
@@ -575,6 +676,7 @@ export function Present(props: { deck: Deck }): Solid.JSX.Element {
     window.removeEventListener("popstate", onPopstate);
     window.removeEventListener("resize", onResize);
     channel?.close();
+    disposeFrame();
   };
 
   reportViewport();
@@ -623,15 +725,26 @@ export function Slide(props: {
   mode?: "live" | "preview";
   viewport?: Viewport;
 }): Solid.JSX.Element {
-  const deck = requireDeckCtx("Slide").deck;
+  const deckCtx = requireDeckCtx("Slide");
+  const deck = deckCtx.deck;
   const ctx = requireFrameCtx("Slide");
   const mode = props.mode ?? "live";
 
   if (mode === "live") {
-    const el = renderFrame(ctx.frame(), deck.tokens, deck.appearance);
+    const { el, dispose } = renderFrame(
+      ctx.frame(),
+      deck.tokens,
+      deck.appearance,
+      deckCtx.loadEmbed,
+    );
     el.style.width = "100%";
     el.style.height = "100%";
-    ctx.addDisposer(ctx.onChange(() => paintFrame(el, ctx.frame(), deck.tokens, deck.appearance)));
+    ctx.addDisposer(dispose);
+    ctx.addDisposer(
+      ctx.onChange(() =>
+        paintFrame(el, ctx.frame(), deck.tokens, deck.appearance, deckCtx.loadEmbed),
+      ),
+    );
     return el as unknown as Solid.JSX.Element;
   }
 
