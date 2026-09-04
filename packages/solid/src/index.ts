@@ -5,6 +5,7 @@ import {
   type Cell,
   type Deck,
   type Frame,
+  type Image,
   type Slide as SlideDoc,
   type Speech as SpeechDoc,
   type ThemeTokens,
@@ -88,6 +89,28 @@ function watchHeadingAlign(heading: HTMLElement): void {
   }
 }
 
+function renderImage(image: Image): HTMLImageElement {
+  const img = document.createElement("img");
+  img.src = image.src;
+  img.alt = image.alt;
+  img.dataset["fit"] = image.fit;
+  img.dataset["focus"] = image.focus;
+  if (image.looks.length > 0) img.dataset["look"] = image.looks.join(" ");
+  return img;
+}
+
+/** The Background is not a Cell: painted as a full-bleed backdrop behind `.cells`,
+ *  never counted toward layout pick or reflow. */
+function renderBackdrop(image: Image): HTMLElement {
+  const backdrop = document.createElement("div");
+  backdrop.className = "backdrop";
+  backdrop.style.backgroundImage = `url("${image.src}")`;
+  backdrop.dataset["fit"] = image.fit;
+  backdrop.dataset["focus"] = image.focus;
+  if (image.looks.length > 0) backdrop.dataset["look"] = image.looks.join(" ");
+  return backdrop;
+}
+
 function renderCell(cell: Cell): HTMLElement {
   const cellEl = document.createElement("div");
   cellEl.className = "cell";
@@ -98,6 +121,10 @@ function renderCell(cell: Cell): HTMLElement {
     heading.innerHTML = block.html;
     cellEl.appendChild(heading);
     watchHeadingAlign(heading);
+  }
+  if (cell.blocks.length === 1 && block?.kind === "image") {
+    cellEl.dataset["kind"] = "image";
+    cellEl.appendChild(renderImage(block));
   }
   // A live Embed guest is future scope (no mount hook exists yet); this placeholder is
   // rendered identically in Slide's live and preview modes, so a preview can never
@@ -125,13 +152,21 @@ function slideLabel(slide: SlideDoc): string {
   return `Slide ${slide.id}`;
 }
 
+/** Caption pairs an H4 Cell with an image Cell in either source order; data-caption-order
+ *  fixes media-then-text visually via CSS `order`, independent of which came first. */
 function buildCellsEl(frame: Frame): HTMLElement {
   const cellsEl = document.createElement("div");
   cellsEl.className = "cells";
   cellsEl.dataset["layout"] = frame.layout;
   cellsEl.dataset["items"] = String(frame.slide.cells.length);
   for (const cell of frame.slide.cells) {
-    cellsEl.appendChild(renderCell(cell));
+    const cellEl = renderCell(cell);
+    if (frame.layout === "caption") {
+      const block = cell.blocks[0];
+      cellEl.dataset["captionOrder"] =
+        cell.blocks.length === 1 && block?.kind === "image" ? "media" : "text";
+    }
+    cellsEl.appendChild(cellEl);
   }
   return cellsEl;
 }
@@ -147,7 +182,10 @@ function applyFrameChrome(
   slideEl.dataset["enter"] = frame.enter;
   slideEl.setAttribute("aria-label", slideLabel(frame.slide));
   paintSlide(slideEl, tokens, appearance, frame.t);
-  slideEl.replaceChildren(buildCellsEl(frame));
+  const children: HTMLElement[] = [];
+  if (frame.slide.background !== undefined) children.push(renderBackdrop(frame.slide.background));
+  children.push(buildCellsEl(frame));
+  slideEl.replaceChildren(...children);
 }
 
 function paintFrame(

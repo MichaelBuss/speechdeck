@@ -21,3 +21,38 @@ test("engine CSS arranges Split-2, Split-3, and Grid without needing theme.css",
 test("engine CSS reflows Split/Grid at a narrow container without changing the Layout name", () => {
   expect(css).toContain("@container slide (max-width:");
 });
+
+test("engine CSS paints Contain/Crop and every Focus on a foreground image without needing theme.css", () => {
+  expect(css).toContain('img[data-fit="contain"]');
+  expect(css).toContain('img[data-fit="crop"]');
+  for (const focus of [
+    "top-left",
+    "top",
+    "top-right",
+    "left",
+    "center",
+    "right",
+    "bottom-left",
+    "bottom",
+    "bottom-right",
+  ]) {
+    expect(css).toContain(`img[data-focus="${focus}"]`);
+  }
+});
+
+test("engine CSS paints a full-bleed Background backdrop, not a Cell", () => {
+  expect(css).toContain(".backdrop");
+  expect(css).toContain('.backdrop[data-fit="crop"]');
+});
+
+test("engine CSS paints combinable Looks (dim, blur) without needing theme.css", () => {
+  expect(css).toContain('[data-look~="dim"]');
+  expect(css).toContain('[data-look~="blur"]');
+  expect(css).toContain('[data-look~="dim"][data-look~="blur"]');
+});
+
+test("engine CSS arranges Caption without needing theme.css", () => {
+  expect(css).toContain('.cells[data-layout="caption"]');
+  expect(css).toContain('[data-caption-order="media"]');
+  expect(css).toContain('[data-caption-order="text"]');
+});

@@ -127,6 +127,59 @@ test("Present, opened as the audience window, paints a table as a Solo Cell", ()
   expect(cell?.querySelector("table")).not.toBeNull();
 });
 
+test("Present, opened as the audience window, paints an image Cell with data-fit/data-focus/data-look", () => {
+  becomeAudienceWindow();
+  window.history.replaceState(null, "", "/");
+  const deck = deckFor(
+    '---\ntheme: @speechdeck/themes/harbour\n---\n![a dog](./dog.jpg "crop top-left dim blur")\n',
+  );
+
+  const el = Present({ deck }) as unknown as HTMLElement;
+  expect(el.dataset["layout"]).toBe("solo");
+  const cell = el.querySelector(".cell");
+  expect(cell?.getAttribute("data-kind")).toBe("image");
+  const img = cell?.querySelector("img");
+  expect(img?.getAttribute("src")).toBe("./dog.jpg");
+  expect(img?.getAttribute("alt")).toBe("a dog");
+  expect(img?.getAttribute("data-fit")).toBe("crop");
+  expect(img?.getAttribute("data-focus")).toBe("top-left");
+  expect(img?.getAttribute("data-look")).toBe("dim blur");
+});
+
+test("Present, opened as the audience window, paints a background title as a full-bleed backdrop, not a Cell", () => {
+  becomeAudienceWindow();
+  window.history.replaceState(null, "", "/");
+  const deck = deckFor(
+    '---\ntheme: @speechdeck/themes/harbour\n---\n# Talk title\n\n![skyline](./skyline.jpg "background dim")\n',
+  );
+
+  const el = Present({ deck }) as unknown as HTMLElement;
+  expect(el.dataset["layout"]).toBe("cover");
+  expect(el.querySelectorAll(".cell")).toHaveLength(1);
+  const backdrop = el.querySelector(".backdrop") as HTMLElement;
+  expect(backdrop).not.toBeNull();
+  expect(backdrop.style.backgroundImage).toContain("skyline.jpg");
+  expect(backdrop.getAttribute("data-fit")).toBe("crop");
+  expect(backdrop.getAttribute("data-look")).toBe("dim");
+});
+
+test("Present, opened as the audience window, orders a Caption's media before its H4 text regardless of source order", () => {
+  becomeAudienceWindow();
+  window.history.replaceState(null, "", "/");
+  const deck = deckFor(
+    "---\ntheme: @speechdeck/themes/harbour\n---\n#### A caption\n\n![a dog](./dog.jpg)\n",
+  );
+
+  const el = Present({ deck }) as unknown as HTMLElement;
+  expect(el.dataset["layout"]).toBe("caption");
+  const cells = el.querySelectorAll(".cells > .cell");
+  expect(cells).toHaveLength(2);
+  expect(cells[0]?.getAttribute("data-kind")).toBe("heading");
+  expect(cells[0]?.getAttribute("data-caption-order")).toBe("text");
+  expect(cells[1]?.getAttribute("data-kind")).toBe("image");
+  expect(cells[1]?.getAttribute("data-caption-order")).toBe("media");
+});
+
 test("Present, opened as the audience window, reflows two/three/four+ Cells as Split-2/Split-3/Grid", () => {
   becomeAudienceWindow();
   window.history.replaceState(null, "", "/1");

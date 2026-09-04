@@ -334,6 +334,88 @@ test("parseDeck: theme, appearance, and motion are Deck-only — a Slide cannot 
   expect(deck.slides[0]?.speech.blocks[0]?.html).toContain("@speechdeck/themes/ink");
 });
 
+test("parseDeck: an image with no title defaults to Contain, Focus center, no Look", () => {
+  const source = "---\ntheme: @speechdeck/themes/harbour\n---\n![a dog](./dog.jpg)\n";
+  const { deck, diagnostics } = parseDeck(source, files);
+  const slide = deck.slides[0];
+
+  expect(diagnostics).toEqual([]);
+  expect(slide?.cells).toHaveLength(1);
+  expect(slide?.cells[0]?.blocks[0]).toMatchObject({
+    kind: "image",
+    src: "./dog.jpg",
+    alt: "a dog",
+    fit: "contain",
+    focus: "center",
+    looks: [],
+  });
+  expect(resolveFrame(deck, { to: "1" }).layout).toBe("solo");
+});
+
+test("parseDeck: an image title is ordered tokens — fit, Focus, then combinable Looks", () => {
+  const source =
+    '---\ntheme: @speechdeck/themes/harbour\n---\n![a dog](./dog.jpg "crop top-left dim blur")\n';
+  const { deck, diagnostics } = parseDeck(source, files);
+  const slide = deck.slides[0];
+
+  expect(diagnostics).toEqual([]);
+  expect(slide?.cells[0]?.blocks[0]).toMatchObject({
+    kind: "image",
+    fit: "crop",
+    focus: "top-left",
+    looks: ["dim", "blur"],
+  });
+});
+
+test("parseDeck: an unrecognized image title token is a Lint; the image still parses", () => {
+  const source =
+    '---\ntheme: @speechdeck/themes/harbour\n---\n![a dog](./dog.jpg "crop sideways")\n';
+  const { deck, diagnostics } = parseDeck(source, files);
+  const slide = deck.slides[0];
+
+  expect(diagnostics).toHaveLength(1);
+  expect(diagnostics[0]).toMatchObject({ kind: "unknown-image-token", slide: "1" });
+  expect(slide?.cells[0]?.blocks[0]).toMatchObject({ kind: "image", fit: "crop", looks: [] });
+});
+
+test("parseDeck: a background title drops the image out of the Cell count and defaults to Crop", () => {
+  const source =
+    '---\ntheme: @speechdeck/themes/harbour\n---\n# Talk title\n\n![skyline](./skyline.jpg "background")\n';
+  const { deck, diagnostics } = parseDeck(source, files);
+  const slide = deck.slides[0];
+
+  expect(diagnostics).toEqual([]);
+  expect(slide?.cells).toHaveLength(1);
+  expect(slide?.cells[0]?.blocks[0]).toMatchObject({ kind: "heading", text: "Talk title" });
+  expect(slide?.background).toMatchObject({ src: "./skyline.jpg", fit: "crop", focus: "center" });
+  expect(resolveFrame(deck, { to: "1" }).layout).toBe("cover");
+});
+
+test("parseDeck: a background title honours an explicit fit instead of defaulting to Crop", () => {
+  const source =
+    '---\ntheme: @speechdeck/themes/harbour\n---\n## Section\n\n![skyline](./skyline.jpg "background contain")\n';
+  const { deck } = parseDeck(source, files);
+  const slide = deck.slides[0];
+
+  expect(slide?.background).toMatchObject({ fit: "contain" });
+});
+
+test("parseDeck: H4 + image, either order, auto-picks Caption; the Caption text is the H4 Cell, not the title string", () => {
+  const firstOrder =
+    '---\ntheme: @speechdeck/themes/harbour\n---\n#### A caption\n\n![a dog](./dog.jpg "dim")\n';
+  const { deck: deckA } = parseDeck(firstOrder, files);
+  expect(deckA.slides[0]?.cells).toHaveLength(2);
+  expect(resolveFrame(deckA, { to: "1" }).layout).toBe("caption");
+  expect(deckA.slides[0]?.cells[0]).toMatchObject({
+    blocks: [{ kind: "heading", depth: 4, text: "A caption" }],
+  });
+
+  const secondOrder =
+    "---\ntheme: @speechdeck/themes/harbour\n---\n![a dog](./dog.jpg)\n\n#### A caption\n";
+  const { deck: deckB } = parseDeck(secondOrder, files);
+  expect(resolveFrame(deckB, { to: "1" }).layout).toBe("caption");
+});
+
 test("matchCode is not implemented", () => {
   const block = {
     kind: "code" as const,
