@@ -54,9 +54,15 @@ importers:
       '@speechdeck/core':
         specifier: workspace:*
         version: link:../core
+      '@speechdeck/solid':
+        specifier: workspace:*
+        version: link:../solid
       '@types/node':
         specifier: ^26.3.0
         version: 26.3.0
+      solid-js:
+        specifier: ^1.9.15
+        version: 1.9.15
 
   packages/solid:
     dependencies:

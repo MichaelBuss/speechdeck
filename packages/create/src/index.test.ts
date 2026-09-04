@@ -1,4 +1,6 @@
-import { parseDeck, type FileMap } from "@speechdeck/core";
+// @vitest-environment happy-dom
+import { parseDeck, type CodeBlock, type EmbedBlock, type FileMap } from "@speechdeck/core";
+import { Present, Rehearse } from "@speechdeck/solid";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -19,9 +21,15 @@ const { text, select } = await import("@clack/prompts");
 
 const themesRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "themes");
 
-function files(): FileMap {
+// A scaffolded project reads relative Cells (file-backed code, demos) off the disk it
+// just wrote to, next to the Deck; theme reads still come from the workspace's own
+// themes package, mirroring what `${theme}/theme.json?raw` resolves to at runtime.
+function files(projectDir: string): FileMap {
   return {
     read(relative) {
+      if (relative.startsWith("./") || relative.startsWith("../")) {
+        return readFileSync(join(projectDir, relative), "utf8");
+      }
       return readFileSync(join(themesRoot, relative.replace("@speechdeck/themes/", "")), "utf8");
     },
   };
@@ -65,7 +73,7 @@ test("--yes writes a Cover-only empty starter with Harbour, files only", async (
   const deckSource = readFileSync(join(dir, "deck.md"), "utf8");
   expect(deckSource).toContain("theme: @speechdeck/themes/harbour");
 
-  const { deck } = parseDeck(deckSource, files());
+  const { deck } = parseDeck(deckSource, files(dir));
   expect(deck.slides).toHaveLength(1);
   expect(deck.slides[0]?.cells).toHaveLength(1);
   expect(deck.slides[0]?.cells[0]?.blocks).toEqual([
@@ -107,16 +115,71 @@ test("the skeleton starter is a Deck of more than one Slide", async () => {
   await init({ yes: true, directory: dir, starter: "skeleton" });
 
   const deckSource = readFileSync(join(dir, "deck.md"), "utf8");
-  const { deck } = parseDeck(deckSource, files());
+  const { deck } = parseDeck(deckSource, files(dir));
   expect(deck.slides.length).toBeGreaterThan(1);
   expect(deck.slides[0]?.cells[0]?.blocks[0]).toMatchObject({ kind: "heading", depth: 1 });
+});
+
+test("the skeleton starter's Embed and its code Cell point at the same file next to the Deck, and show the same bytes", async () => {
+  await init({ yes: true, directory: dir, starter: "skeleton" });
+
+  const deckSource = readFileSync(join(dir, "deck.md"), "utf8");
+  const { deck, diagnostics } = parseDeck(deckSource, files(dir));
+  expect(diagnostics).toEqual([]);
+
+  const blocks = deck.slides.flatMap((slide) => slide.cells.flatMap((cell) => cell.blocks));
+  const embeds = blocks.filter((block): block is EmbedBlock => block.kind === "embed");
+  expect(embeds).toHaveLength(1);
+  const embed = embeds[0];
+  expect(embed?.specifier.startsWith("./")).toBe(true);
+
+  // The specifier is a path relative to the Deck (ADR 0006): it must resolve on disk
+  // right next to deck.md, not to some reserved embeds folder.
+  expect(existsSync(join(dir, embed?.specifier ?? ""))).toBe(true);
+
+  const codeBlocks = blocks.filter((block): block is CodeBlock => block.kind === "code");
+  const paired = codeBlocks.find(
+    (block) => block.source.from === "file" && block.source.path === embed?.specifier,
+  );
+  expect(paired?.source.from).toBe("file");
+
+  const onDisk = readFileSync(join(dir, embed?.specifier ?? ""), "utf8");
+  expect(paired?.source.bytes).toBe(onDisk);
+});
+
+test("the scaffolded skeleton talk Presents and Rehearses, mounting its Embed live", async () => {
+  await init({ yes: true, directory: dir, starter: "skeleton" });
+
+  const deckSource = readFileSync(join(dir, "deck.md"), "utf8");
+  const { deck } = parseDeck(deckSource, files(dir));
+
+  const dispose = vi.fn();
+  const guest = vi.fn(() => ({ dispose, ready: Promise.resolve() }));
+  const loadEmbed = vi.fn(async (specifier: string) => {
+    const onDisk = readFileSync(join(dir, specifier), "utf8");
+    expect(onDisk).toContain("export default");
+    return guest;
+  });
+
+  window.name = "speechdeck-audience";
+  window.history.replaceState(null, "", "/2");
+  const present = Present({ deck, loadEmbed }) as unknown as HTMLElement;
+  await vi.waitFor(() => expect(guest).toHaveBeenCalledTimes(1));
+  expect(present.querySelector(".embed")?.getAttribute("data-live")).toBe("true");
+
+  window.name = "";
+  const rehearse = Rehearse({
+    deck,
+    loadEmbed: vi.fn(async () => guest),
+  }) as unknown as HTMLElement;
+  expect(rehearse.dataset["composition"]).toBe("rehearse");
 });
 
 test("a chosen theme is reflected in the Deck's Frontmatter and resolves", async () => {
   await init({ yes: true, directory: dir, theme: "@speechdeck/themes/ink" });
 
   const deckSource = readFileSync(join(dir, "deck.md"), "utf8");
-  const { deck } = parseDeck(deckSource, files());
+  const { deck } = parseDeck(deckSource, files(dir));
   expect(deck.theme).toBe("@speechdeck/themes/ink");
   expect(deck.tokens.specifier).toBe("@speechdeck/themes/ink");
 });
@@ -170,7 +233,7 @@ test("on a TTY, Clack asks directory, starter, and theme", async () => {
   expect(text).toHaveBeenCalledTimes(1);
   expect(select).toHaveBeenCalledTimes(2);
   const deckSource = readFileSync(join(dir, "deck.md"), "utf8");
-  const { deck } = parseDeck(deckSource, files());
+  const { deck } = parseDeck(deckSource, files(dir));
   expect(deck.theme).toBe("@speechdeck/themes/ink");
   expect(deck.slides.length).toBeGreaterThan(1);
 });
