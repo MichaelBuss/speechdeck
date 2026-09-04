@@ -123,6 +123,7 @@ function packageJsonFile(name: string): ScaffoldFile {
       dev: "vite",
       build: "vite build",
       preview: "vite preview",
+      inspect: "SPEECHDECK_INSPECT=1 vite",
     },
     dependencies: {
       "@speechdeck/core": SPEECHDECK_VERSION,
@@ -147,13 +148,21 @@ function viteConfigFile(): ScaffoldFile {
     content: `import { resolve } from "node:path";
 import { defineConfig } from "vite";
 
+// Inspect is gated (ADR 0014): \`pnpm inspect\` sets SPEECHDECK_INSPECT=1, so only that
+// build (or that dev server) ever registers inspect.html. Default \`pnpm dev\` / \`vite
+// build\` omit it.
+const input: Record<string, string> = {
+  main: resolve(import.meta.dirname, "index.html"),
+  rehearse: resolve(import.meta.dirname, "rehearse.html"),
+};
+if (process.env.SPEECHDECK_INSPECT === "1") {
+  input.inspect = resolve(import.meta.dirname, "inspect.html");
+}
+
 export default defineConfig({
   build: {
     rollupOptions: {
-      input: {
-        main: resolve(import.meta.dirname, "index.html"),
-        rehearse: resolve(import.meta.dirname, "rehearse.html"),
-      },
+      input,
     },
   },
 });
@@ -250,6 +259,20 @@ app.replaceChildren(Rehearse({ deck }) as unknown as Node);
   };
 }
 
+function inspectFile(): ScaffoldFile {
+  return {
+    path: "src/inspect.ts",
+    content: `import "@speechdeck/solid/style.css";
+import { Inspect } from "@speechdeck/solid";
+import { deck } from "./deck.ts";
+
+const app = document.querySelector<HTMLDivElement>("#app");
+if (app === null) throw new Error("Missing #app element");
+app.replaceChildren(Inspect({ deck }) as unknown as Node);
+`,
+  };
+}
+
 function deckMarkdownFile(theme: string, starter: Starter): ScaffoldFile {
   const cover = `# My Talk
 
@@ -293,10 +316,12 @@ function scaffoldFiles(resolved: Resolved): readonly ScaffoldFile[] {
     tsconfigFile(),
     htmlFile("index.html", "My Talk", "src/main.ts"),
     htmlFile("rehearse.html", "My Talk — Rehearse", "src/rehearse.ts"),
+    htmlFile("inspect.html", "My Talk — Inspect", "src/inspect.ts"),
     viteEnvFile(),
     deckModuleFile(resolved.theme),
     mainFile(),
     rehearseFile(),
+    inspectFile(),
     deckMarkdownFile(resolved.theme, resolved.starter),
     agentsFile(),
     gitignoreFile(),

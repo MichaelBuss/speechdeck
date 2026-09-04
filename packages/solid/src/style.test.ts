@@ -57,6 +57,13 @@ test("engine CSS arranges Caption without needing theme.css", () => {
   expect(css).toContain('[data-caption-order="text"]');
 });
 
+test("engine CSS gives Inspect a stage, a drag handle, and a readout", () => {
+  expect(css).toContain(".inspect-stage");
+  expect(css).toContain(".inspect-handle");
+  expect(css).toContain(".inspect-readout");
+  expect(css).toContain(".readout-row");
+});
+
 test("engine CSS paints the travelling background and the fg/title/font handles without needing theme.css", () => {
   expect(css).toContain("background: var(--sd-bg)");
   expect(css).toContain("color: var(--sd-fg)");

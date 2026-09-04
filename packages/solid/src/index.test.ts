@@ -113,8 +113,19 @@ test("Rehearse's primitives throw when called before Rehearse mounts", () => {
   expect(() => useAudienceViewport()).toThrow(/Rehearse/);
 });
 
-test("Inspect is not implemented", () => {
-  expect(typeof Inspect).toBe("function");
+test("Inspect renders a Slide on a stage, live, with no Speech", () => {
+  window.history.replaceState(null, "", "/");
+  const deck = deckFor("---\ntheme: @speechdeck/themes/harbour\n---\n# Talk title\n");
+
+  const root = Inspect({ deck }) as unknown as HTMLElement;
+  expect(root.dataset["composition"]).toBe("inspect");
+  expect(root.querySelector(".speech")).toBeNull();
+
+  const stage = root.querySelector(".inspect-stage") as HTMLElement;
+  const slide = stage.querySelector(".slide");
+  expect(slide?.tagName).toBe("MAIN");
+  expect(slide?.querySelector("h1")?.textContent).toBe("Talk title");
+  expect(root.querySelector('[data-field="heading"] dd')?.textContent).toBe("center");
 });
 
 // A click on "Open audience window" makes this window's own Present that popup: it is
@@ -1035,4 +1046,246 @@ test("Escape blurs an in-document Embed and returns focus to the Slide", async (
   expect(document.activeElement).toBe(el);
 
   document.body.removeChild(el);
+});
+
+const TWO_CELL_DECK =
+  "---\ntheme: @speechdeck/themes/harbour\n---\n<!--on-->\nOne.\n\n<!--on-->\nTwo.\n";
+
+test("Inspect shows all seven named viewports; Fill is the default and is the window, not dragged", () => {
+  window.history.replaceState(null, "", "/");
+  const deck = deckFor(TWO_CELL_DECK);
+
+  const root = Inspect({ deck }) as unknown as HTMLElement;
+  const buttons = [...root.querySelectorAll<HTMLButtonElement>(".inspect-preset")];
+  expect(buttons.map((b) => b.dataset["preset"])).toEqual([
+    "fill",
+    "16-9",
+    "zoom",
+    "square",
+    "phone",
+    "phone-l",
+    "freeform",
+  ]);
+  expect(buttons.map((b) => b.textContent)).toEqual([
+    "Fill",
+    "16:9 1280×720",
+    "Zoom 900×700",
+    "Square 800×800",
+    "Phone 390×844",
+    "Phone landscape 844×390",
+    "Freeform",
+  ]);
+
+  const stage = root.querySelector(".inspect-stage") as HTMLElement;
+  expect(stage.dataset["preset"]).toBe("fill");
+  expect(stage.style.width).toBe("100%");
+  expect(stage.style.height).toBe("100%");
+  expect(root.querySelector('[data-field="stage"] dd')?.textContent).toBe("1024×768");
+
+  const handle = root.querySelector(".inspect-handle") as HTMLElement;
+  expect(handle.style.display).toBe("none");
+});
+
+test("Clicking a named preset sizes the stage exactly and stores the preset id in the URL", () => {
+  window.history.replaceState(null, "", "/");
+  const deck = deckFor(TWO_CELL_DECK);
+  const root = Inspect({ deck }) as unknown as HTMLElement;
+
+  const zoomBtn = root.querySelector<HTMLButtonElement>('[data-preset="zoom"]');
+  zoomBtn?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+
+  const stage = root.querySelector(".inspect-stage") as HTMLElement;
+  expect(stage.dataset["preset"]).toBe("zoom");
+  expect(stage.style.width).toBe("900px");
+  expect(stage.style.height).toBe("700px");
+  expect(zoomBtn?.getAttribute("aria-pressed")).toBe("true");
+  expect(new URLSearchParams(window.location.search).get("preset")).toBe("zoom");
+  expect(new URLSearchParams(window.location.search).has("width")).toBe(false);
+});
+
+test("Reload of a named preset from the URL is exact", () => {
+  window.history.replaceState(null, "", "/?preset=phone");
+  const deck = deckFor(TWO_CELL_DECK);
+  const root = Inspect({ deck }) as unknown as HTMLElement;
+
+  const stage = root.querySelector(".inspect-stage") as HTMLElement;
+  expect(stage.dataset["preset"]).toBe("phone");
+  expect(stage.style.width).toBe("390px");
+  expect(stage.style.height).toBe("844px");
+});
+
+test("Clicking Freeform with no history opens 1280×720", () => {
+  window.history.replaceState(null, "", "/");
+  const deck = deckFor(TWO_CELL_DECK);
+  const root = Inspect({ deck }) as unknown as HTMLElement;
+
+  const freeformBtn = root.querySelector<HTMLButtonElement>('[data-preset="freeform"]');
+  freeformBtn?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+
+  const stage = root.querySelector(".inspect-stage") as HTMLElement;
+  expect(stage.style.width).toBe("1280px");
+  expect(stage.style.height).toBe("720px");
+  const params = new URLSearchParams(window.location.search);
+  expect(params.get("preset")).toBe("freeform");
+  expect(params.get("width")).toBe("1280");
+  expect(params.get("height")).toBe("720");
+});
+
+test("Freeform round-trips the box: reloading a stored Freeform size is exact", () => {
+  window.history.replaceState(null, "", "/?preset=freeform&width=950&height=720");
+  const deck = deckFor(TWO_CELL_DECK);
+  const root = Inspect({ deck }) as unknown as HTMLElement;
+
+  const stage = root.querySelector(".inspect-stage") as HTMLElement;
+  expect(stage.style.width).toBe("950px");
+  expect(stage.style.height).toBe("720px");
+});
+
+test("Dragging a named box selects Freeform and keeps that size", () => {
+  window.history.replaceState(null, "", "/?preset=zoom");
+  const deck = deckFor(TWO_CELL_DECK);
+  const root = Inspect({ deck }) as unknown as HTMLElement;
+  const stage = root.querySelector(".inspect-stage") as HTMLElement;
+  const handle = root.querySelector(".inspect-handle") as HTMLElement;
+
+  handle.dispatchEvent(
+    new PointerEvent("pointerdown", { pointerId: 1, clientX: 100, clientY: 100 }),
+  );
+  // The very first move, even with no delta, already reads as Freeform at the box's
+  // current size — it must not jump before the drag actually moves anything.
+  handle.dispatchEvent(
+    new PointerEvent("pointermove", { pointerId: 1, clientX: 100, clientY: 100 }),
+  );
+  expect(stage.dataset["preset"]).toBe("freeform");
+  expect(stage.style.width).toBe("900px");
+  expect(stage.style.height).toBe("700px");
+
+  handle.dispatchEvent(
+    new PointerEvent("pointermove", { pointerId: 1, clientX: 150, clientY: 120 }),
+  );
+  expect(stage.style.width).toBe("950px");
+  expect(stage.style.height).toBe("720px");
+
+  handle.dispatchEvent(new PointerEvent("pointerup", { pointerId: 1 }));
+  const params = new URLSearchParams(window.location.search);
+  expect(params.get("preset")).toBe("freeform");
+  expect(params.get("width")).toBe("950");
+  expect(params.get("height")).toBe("720");
+});
+
+test("Inspect's readout is exactly Layout, Impossible override, Cells, Stage, Heading align, and Refuse — Travel, identity names, enter, Speech, and Embed readiness stay out", () => {
+  window.history.replaceState(null, "", "/");
+  const deck = deckFor(TWO_CELL_DECK);
+  const root = Inspect({ deck }) as unknown as HTMLElement;
+
+  const terms = [...root.querySelectorAll(".readout-row > dt")].map((dt) => dt.textContent);
+  expect(terms).toEqual([
+    "Layout",
+    "Impossible override",
+    "Cells",
+    "Stage",
+    "Heading align",
+    "Refuse",
+  ]);
+  expect(root.textContent).not.toMatch(/enter|speech|embed ready|identity/i);
+
+  expect(root.querySelector('[data-field="layout"] dd')?.textContent).toBe("split-2 (auto)");
+  expect(root.querySelector('[data-field="impossible"] dd')?.textContent).toBe("no");
+  expect(root.querySelector('[data-field="cells"] dd')?.textContent).toBe("2");
+  expect(root.querySelector('[data-field="heading"] dd')?.textContent).toBe("—");
+  expect(root.querySelector('[data-field="refuse"] dd')?.textContent).toBe("no");
+});
+
+test("Inspect names the auto pick when an override wins, and flags an impossible override", () => {
+  window.history.replaceState(null, "", "/");
+  const captionDeck = deckFor(
+    "---\ntheme: @speechdeck/themes/harbour\n---\nlayout: split-2\n#### Caption\n\n![alt](./photo.jpg)\n",
+  );
+  const overriddenRoot = Inspect({ deck: captionDeck }) as unknown as HTMLElement;
+  expect(overriddenRoot.querySelector('[data-field="layout"] dd')?.textContent).toBe(
+    "split-2 (override, auto caption)",
+  );
+  expect(overriddenRoot.querySelector('[data-field="impossible"] dd')?.textContent).toBe("no");
+
+  const { deck: impossibleDeck } = parseDeck(
+    "---\ntheme: @speechdeck/themes/harbour\n---\nlayout: grid\n<!--on-->\nOne.\n\n<!--on-->\nTwo.\n",
+    files,
+  );
+  const impossibleRoot = Inspect({ deck: impossibleDeck }) as unknown as HTMLElement;
+  expect(impossibleRoot.querySelector('[data-field="layout"] dd')?.textContent).toBe(
+    "split-2 (override, auto split-2)",
+  );
+  expect(impossibleRoot.querySelector('[data-field="impossible"] dd')?.textContent).toBe(
+    "yes — lint, auto rendered",
+  );
+});
+
+test("Refuse is measured at the stage's viewport, from the laid-out DOM", () => {
+  window.history.replaceState(null, "", "/");
+  const deck = deckFor(TWO_CELL_DECK);
+  const root = Inspect({ deck }) as unknown as HTMLElement;
+  expect(root.querySelector('[data-field="refuse"] dd')?.textContent).toBe("no");
+
+  const cells = root.querySelector(".cells") as HTMLElement;
+  Object.defineProperty(cells, "scrollHeight", { value: 5000, configurable: true });
+  Object.defineProperty(cells, "clientHeight", { value: 200, configurable: true });
+
+  // Re-measure by reselecting the current preset; the stage's content did not change.
+  root
+    .querySelector<HTMLButtonElement>('[data-preset="fill"]')
+    ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  expect(root.querySelector('[data-field="refuse"] dd')?.textContent).toBe("yes");
+});
+
+test("Inspect never joins Present's BroadcastChannel", () => {
+  window.history.replaceState(null, "", "/");
+  const deck = deckFor(TWO_CELL_DECK);
+  const Native = BroadcastChannel;
+  let created = 0;
+  class Counting extends Native {
+    constructor(name: string) {
+      created++;
+      super(name);
+    }
+  }
+  vi.stubGlobal("BroadcastChannel", Counting);
+
+  Inspect({ deck });
+
+  expect(created).toBe(0);
+});
+
+test("Inspect's own Arrival is local: advancing here never posts to Present's channel and never moves the audience Slide", () => {
+  window.history.replaceState(null, "", "/1");
+  const deck = deckFor(THREE_SLIDE_DECK);
+  const spy = new BroadcastChannel(PRESENTER_VIEW_CHANNEL);
+  const messages: unknown[] = [];
+  spy.addEventListener("message", (event: MessageEvent<unknown>) => messages.push(event.data));
+
+  const root = Inspect({ deck }) as unknown as HTMLElement;
+  expect(root.querySelector(".slide h1")?.textContent).toBe("One");
+
+  window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight" }));
+  expect(root.querySelector(".slide h2")?.textContent).toBe("Two");
+
+  expect(messages).toEqual([]);
+  expect(window.location.pathname).toBe("/1");
+  spy.close();
+});
+
+test("Embeds on the Inspect stage are live, not inert previews", async () => {
+  window.history.replaceState(null, "", "/");
+  const deck = deckFor(
+    "---\ntheme: @speechdeck/themes/harbour\n---\n```embed ./demos/counter.ts\ncount: 3\n```\n",
+  );
+  const dispose = vi.fn();
+  const guest = vi.fn(() => ({ dispose, ready: Promise.resolve() }));
+  const loadEmbed = vi.fn(async () => guest);
+
+  const root = Inspect({ deck, loadEmbed }) as unknown as HTMLElement;
+  await vi.waitFor(() => expect(guest).toHaveBeenCalledTimes(1));
+
+  const host = root.querySelector(".embed");
+  expect(guest).toHaveBeenCalledWith(host, { count: 3 });
+  expect(host?.getAttribute("data-live")).toBe("true");
 });

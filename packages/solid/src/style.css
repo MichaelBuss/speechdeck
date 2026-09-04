@@ -259,3 +259,73 @@ mark[data-mark="strike-through"] {
   text-decoration-color: var(--sd-accent-1, currentColor);
   text-decoration-thickness: 0.12em;
 }
+
+/* Inspect (ADR 0014): a stage plus a readout, chrome the audience never mounts. The
+ * stage is a real Slide viewport at the chosen pixel size — never scaled, so Refuse
+ * reads from the same DOM the audience would refuse on. */
+.inspect {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-rows: auto 1fr;
+  height: 100%;
+  min-height: 0;
+}
+
+.inspect-presets {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.inspect-preset[aria-pressed="true"] {
+  font-weight: 600;
+}
+
+.inspect-stage-wrap {
+  display: grid;
+  place-items: center;
+  min-height: 0;
+  min-width: 0;
+  overflow: auto;
+}
+
+.inspect-stage {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.inspect-stage[data-preset="fill"] {
+  width: 100%;
+  height: 100%;
+}
+
+.inspect-handle {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 1rem;
+  height: 1rem;
+  cursor: nwse-resize;
+  touch-action: none;
+}
+
+.inspect-readout {
+  margin: 0;
+  display: grid;
+  gap: 0.25rem 0.75rem;
+}
+
+.readout-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.readout-row > dt {
+  font-weight: 600;
+}
+
+.readout-row > dd {
+  margin: 0;
+}
