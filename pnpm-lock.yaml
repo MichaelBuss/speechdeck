@@ -57,12 +57,21 @@ importers:
       '@speechdeck/solid':
         specifier: workspace:*
         version: link:../solid
+      '@speechdeck/themes':
+        specifier: workspace:*
+        version: link:../themes
+      '@speechdeck/vite':
+        specifier: workspace:*
+        version: link:../vite
       '@types/node':
         specifier: ^26.3.0
         version: 26.3.0
       solid-js:
         specifier: ^1.9.15
         version: 1.9.15
+      vite:
+        specifier: ^8.2.2
+        version: 8.2.2(@types/node@26.3.0)(esbuild@0.28.2)
 
   packages/solid:
     dependencies:
