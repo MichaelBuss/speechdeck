@@ -136,6 +136,129 @@ test("parseDeck: two Slides may share a heading; they do not share an address", 
   expect(deck.slides[1]?.cells[0]?.blocks[0]).toMatchObject({ kind: "heading", text: "Same" });
 });
 
+test("parseDeck: <!--on--> immediately before a paragraph puts it on the Slide as a Cell", () => {
+  const source = "---\ntheme: @speechdeck/themes/harbour\n---\n<!--on-->\nThis is promoted.\n";
+  const { deck } = parseDeck(source, files);
+  const slide = deck.slides[0];
+
+  expect(slide?.speech.blocks).toHaveLength(0);
+  expect(slide?.cells).toHaveLength(1);
+  expect(slide?.cells[0]?.blocks[0]).toMatchObject({
+    kind: "prose",
+    html: "<p>This is promoted.</p>",
+  });
+  expect(resolveFrame(deck, { to: "1" }).layout).toBe("solo");
+});
+
+test("parseDeck: <!--on--> immediately before a list or quote promotes it too", () => {
+  const source = [
+    "---",
+    "theme: @speechdeck/themes/harbour",
+    "---",
+    "<!--on-->",
+    "- one",
+    "- two",
+    "",
+    "<!--on-->",
+    "> quoted",
+  ].join("\n");
+  const { deck } = parseDeck(source, files);
+  const slide = deck.slides[0];
+
+  expect(slide?.cells).toHaveLength(2);
+  expect(slide?.cells[0]?.blocks[0]).toMatchObject({
+    kind: "prose",
+    html: "<ul><li>one</li><li>two</li></ul>",
+  });
+  expect(slide?.cells[1]?.blocks[0]).toMatchObject({
+    kind: "prose",
+    html: "<blockquote><p>quoted</p></blockquote>",
+  });
+});
+
+test("parseDeck: a blank line between <!--on--> and the block cancels the Promotion", () => {
+  const source = "---\ntheme: @speechdeck/themes/harbour\n---\n<!--on-->\n\nNot promoted.\n";
+  const { deck } = parseDeck(source, files);
+  const slide = deck.slides[0];
+
+  expect(slide?.cells).toHaveLength(0);
+  expect(slide?.speech.blocks[0]).toMatchObject({
+    kind: "paragraph",
+    html: "<p>Not promoted.</p>",
+  });
+});
+
+test("parseDeck: any other HTML comment is a Comment, never a Cell or Speech, and does not split adjacent lines", () => {
+  const source = [
+    "---",
+    "theme: @speechdeck/themes/harbour",
+    "---",
+    "## Heading",
+    "",
+    "First line.",
+    "<!-- speaker-only note -->",
+    "Second line.",
+    "",
+    "<!-- entirely private -->",
+  ].join("\n");
+  const { deck } = parseDeck(source, files);
+  const slide = deck.slides[0];
+
+  expect(slide?.cells).toHaveLength(1);
+  expect(slide?.speech.blocks).toHaveLength(1);
+  expect(slide?.speech.blocks[0]?.html).toBe("<p>First line. Second line.</p>");
+  expect(slide?.speech.blocks[0]?.html).not.toContain("speaker-only");
+  expect(JSON.stringify(deck)).not.toContain("entirely private");
+});
+
+test('parseDeck: a Mark is <mark> or <mark data-mark="circle">; other types render too', () => {
+  const source = [
+    "---",
+    "theme: @speechdeck/themes/harbour",
+    "---",
+    "<!--on-->",
+    'Plain <mark>underlined</mark> and <mark data-mark="circle">circled</mark> and <mark data-mark="highlight">hi</mark> and <mark data-mark="box">boxed</mark> and <mark data-mark="strike-through">gone</mark>.',
+  ].join("\n");
+  const { deck } = parseDeck(source, files);
+  const html = deck.slides[0]?.cells[0]?.blocks[0]?.["html" as never] as unknown as string;
+
+  expect(html).toContain("<mark>underlined</mark>");
+  expect(html).toContain('<mark data-mark="circle">circled</mark>');
+  expect(html).toContain('<mark data-mark="highlight">hi</mark>');
+  expect(html).toContain('<mark data-mark="box">boxed</mark>');
+  expect(html).toContain('<mark data-mark="strike-through">gone</mark>');
+});
+
+test("parseDeck: an unrecognized data-mark value is escaped as plain text, not rendered as a live Mark", () => {
+  const source =
+    '---\ntheme: @speechdeck/themes/harbour\n---\n<!--on-->\nA <mark data-mark="rainbow">nope</mark> mark.\n';
+  const { deck } = parseDeck(source, files);
+  const html = deck.slides[0]?.cells[0]?.blocks[0]?.["html" as never] as unknown as string;
+
+  expect(html).not.toContain("<mark");
+  expect(html).toContain("&lt;mark data-mark=&quot;rainbow&quot;&gt;nope&lt;/mark&gt;");
+});
+
+test("parseDeck: a table is a Cell and auto-picks Solo", () => {
+  const source = [
+    "---",
+    "theme: @speechdeck/themes/harbour",
+    "---",
+    "| a | b |",
+    "| - | - |",
+    "| 1 | 2 |",
+  ].join("\n");
+  const { deck } = parseDeck(source, files);
+  const slide = deck.slides[0];
+
+  expect(slide?.cells).toHaveLength(1);
+  expect(slide?.cells[0]?.blocks[0]?.kind).toBe("table");
+  expect(slide?.cells[0]?.blocks[0]).toMatchObject({
+    html: "<table><thead><tr><th>a</th><th>b</th></tr></thead><tbody><tr><td>1</td><td>2</td></tr></tbody></table>",
+  });
+  expect(resolveFrame(deck, { to: "1" }).layout).toBe("solo");
+});
+
 test("matchCode is not implemented", () => {
   const block = {
     kind: "code" as const,

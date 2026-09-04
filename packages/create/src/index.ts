@@ -225,7 +225,8 @@ export const { deck } = parseDeck(deckSource, files);
 function mainFile(): ScaffoldFile {
   return {
     path: "src/main.ts",
-    content: `import { Present } from "@speechdeck/solid";
+    content: `import "@speechdeck/solid/style.css";
+import { Present } from "@speechdeck/solid";
 import { deck } from "./deck.ts";
 
 const app = document.querySelector<HTMLDivElement>("#app");
@@ -238,7 +239,8 @@ app.replaceChildren(Present({ deck }) as unknown as Node);
 function rehearseFile(): ScaffoldFile {
   return {
     path: "src/rehearse.ts",
-    content: `import { Rehearse } from "@speechdeck/solid";
+    content: `import "@speechdeck/solid/style.css";
+import { Rehearse } from "@speechdeck/solid";
 import { deck } from "./deck.ts";
 
 const app = document.querySelector<HTMLDivElement>("#app");

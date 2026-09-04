@@ -110,6 +110,10 @@ function renderCell(cell: Cell): HTMLElement {
     embed.textContent = block.fallback ?? "Embed";
     cellEl.appendChild(embed);
   }
+  if (cell.blocks.length === 1 && (block?.kind === "prose" || block?.kind === "table")) {
+    cellEl.dataset["kind"] = block.kind;
+    cellEl.innerHTML = block.html;
+  }
   return cellEl;
 }
 
