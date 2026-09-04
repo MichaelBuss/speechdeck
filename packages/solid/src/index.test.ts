@@ -174,6 +174,18 @@ test("Present, opened as the audience window, paints a table as a Solo Cell", ()
   expect(cell?.querySelector("table")).not.toBeNull();
 });
 
+test("Present, opened as the audience window, paints a fenced code block as a code Cell", () => {
+  becomeAudienceWindow();
+  window.history.replaceState(null, "", "/");
+  const deck = deckFor("---\ntheme: @speechdeck/themes/harbour\n---\n```ts\nlet n = 0;\n```\n");
+
+  const el = Present({ deck }) as unknown as HTMLElement;
+  expect(el.dataset["layout"]).toBe("solo");
+  const cell = el.querySelector(".cell");
+  expect(cell?.getAttribute("data-kind")).toBe("code");
+  expect(cell?.querySelector("pre code")?.textContent).toBe("let n = 0;");
+});
+
 test("Present, opened as the audience window, paints an image Cell with data-fit/data-focus/data-look", () => {
   becomeAudienceWindow();
   window.history.replaceState(null, "", "/");
@@ -483,6 +495,73 @@ test("Present, opened as the audience window: a connected sequential Arrival run
   expect(heading?.textContent).toBe("Same");
   expect(heading?.style.getPropertyValue("view-transition-name")).toBe(beforeName);
   expect(heading?.style.getPropertyValue("view-transition-class")).toBe("heading");
+});
+
+const SAME_INDEX_CODE_DECK =
+  "---\ntheme: @speechdeck/themes/harbour\n---\n```ts\nlet n = 0;\n```\n---\nenter: connected\n```ts\nlet n = 1;\n```\n";
+
+test("Present, opened as the audience window: a connected sequential Arrival morphs same-index code Cells with a shared, author-invisible name", () => {
+  becomeAudienceWindow();
+  window.history.replaceState(null, "", "/1");
+  const deck = deckFor(SAME_INDEX_CODE_DECK);
+  const el = Present({ deck }) as unknown as HTMLElement;
+
+  let beforeName: string | undefined;
+  const { start } = stubViewTransition();
+  start.mockImplementationOnce((cb?: () => unknown) => {
+    beforeName = (
+      el.querySelector('.cell[data-kind="code"]') as HTMLElement
+    ).style.getPropertyValue("view-transition-name");
+    cb?.();
+    return {
+      ready: Promise.resolve(),
+      updateCallbackDone: Promise.resolve(),
+      finished: Promise.resolve(),
+      skipTransition: vi.fn(),
+    };
+  });
+
+  window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight" }));
+
+  expect(start).toHaveBeenCalledTimes(1);
+  expect(beforeName).toBeTruthy();
+  const codeCell = el.querySelector('.cell[data-kind="code"]') as HTMLElement;
+  expect(codeCell.querySelector("code")?.textContent).toBe("let n = 1;");
+  expect(codeCell.style.getPropertyValue("view-transition-name")).toBe(beforeName);
+  expect(codeCell.style.getPropertyValue("view-transition-class")).toBe("code");
+});
+
+test("Present, opened as the audience window: a leftover code Cell with no counterpart at its index does not morph", () => {
+  becomeAudienceWindow();
+  window.history.replaceState(null, "", "/1");
+  const deck = deckFor(
+    "---\ntheme: @speechdeck/themes/harbour\n---\n```ts\nlet n = 0;\n```\n---\nenter: connected\n```ts\nlet n = 1;\n```\n\n```ts\nlet m = 0;\n```\n",
+  );
+  const el = Present({ deck }) as unknown as HTMLElement;
+  stubViewTransition();
+
+  window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight" }));
+
+  const codeCells = [...el.querySelectorAll<HTMLElement>('.cell[data-kind="code"]')];
+  expect(codeCells).toHaveLength(2);
+  expect(codeCells[0]?.style.getPropertyValue("view-transition-name")).toBeTruthy();
+  expect(codeCells[1]?.style.getPropertyValue("view-transition-name")).toBe("");
+});
+
+test("Present, opened as the audience window: code on a hard cut never gets a view-transition-name", () => {
+  becomeAudienceWindow();
+  window.history.replaceState(null, "", "/1");
+  const deck = deckFor(
+    "---\ntheme: @speechdeck/themes/harbour\n---\n```ts\nlet n = 0;\n```\n---\n```ts\nlet n = 1;\n```\n",
+  );
+  const el = Present({ deck }) as unknown as HTMLElement;
+  const { start } = stubViewTransition();
+
+  window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight" }));
+
+  expect(start).not.toHaveBeenCalled();
+  const codeCell = el.querySelector('.cell[data-kind="code"]') as HTMLElement;
+  expect(codeCell.style.getPropertyValue("view-transition-name")).toBe("");
 });
 
 test("Present, opened as the audience window: a hard cut never opens a View Transition, even mid-Deck", () => {
