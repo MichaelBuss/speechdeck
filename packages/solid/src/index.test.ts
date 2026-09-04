@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseDeck, type FileMap } from "@speechdeck/core";
-import { expect, test, vi } from "vitest";
+import { beforeEach, expect, test, vi } from "vitest";
 import {
   DeckProvider,
   Elapsed,
@@ -32,6 +32,24 @@ function deckFor(markdown: string) {
   return parseDeck(markdown, files).deck;
 }
 
+const PRESENTER_VIEW_CHANNEL = "speechdeck-presenter-view";
+
+function waitForMessage(channel: BroadcastChannel): Promise<unknown> {
+  return new Promise((resolve) => {
+    channel.addEventListener("message", (event: MessageEvent<unknown>) => resolve(event.data), {
+      once: true,
+    });
+  });
+}
+
+// Every window starts as the speaker's own; a test opts into being the audience
+// popup via becomeAudienceWindow().
+beforeEach(() => {
+  window.name = "";
+  window.innerWidth = 1024;
+  window.innerHeight = 768;
+});
+
 test("Present is not implemented", () => {
   expect(typeof Present).toBe("function");
 });
@@ -52,11 +70,19 @@ test("Inspect is not implemented", () => {
   expect(typeof Inspect).toBe("function");
 });
 
-test("Present paints a Cover Slide at / with Harbour tokens on the public DOM", () => {
+// A click on "Open audience window" makes this window's own Present that popup: it is
+// recognized by `window.name`, exactly as window.open(url, "speechdeck-audience") would name it.
+function becomeAudienceWindow(): void {
+  window.name = "speechdeck-audience";
+}
+
+test("Present, opened as the audience window, paints a Cover Slide at / with Harbour tokens on the public DOM", () => {
+  becomeAudienceWindow();
   window.history.replaceState(null, "", "/");
   const deck = deckFor("---\ntheme: @speechdeck/themes/harbour\n---\n# Talk title\n");
 
   const el = Present({ deck }) as unknown as HTMLElement;
+  expect(el.tagName).toBe("MAIN");
   expect(el.className).toBe("slide");
   expect(el.dataset["layout"]).toBe("cover");
   expect(el.style.getPropertyValue("color-scheme")).toBe("dark");
@@ -71,7 +97,8 @@ test("Present paints a Cover Slide at / with Harbour tokens on the public DOM", 
   expect(heading?.getAttribute("data-align")).toBe("center");
 });
 
-test("Present never paints Speech onto the Slide", () => {
+test("Present, opened as the audience window, never paints Speech onto the Slide", () => {
+  becomeAudienceWindow();
   window.history.replaceState(null, "", "/");
   const deck = deckFor(
     "---\ntheme: @speechdeck/themes/harbour\n---\n## Heading\n\nThis is spoken only, never shown.\n",
@@ -81,7 +108,8 @@ test("Present never paints Speech onto the Slide", () => {
   expect(el.textContent).not.toContain("spoken only");
 });
 
-test("Present: ArrowRight/ArrowLeft hard-cut to the next/previous Slide and update the URL", () => {
+test("Present, opened as the audience window: ArrowRight/ArrowLeft hard-cut to the next/previous Slide and update the URL", () => {
+  becomeAudienceWindow();
   window.history.replaceState(null, "", "/1");
   const deck = deckFor(
     "---\ntheme: @speechdeck/themes/harbour\n---\n# One\n---\n## Two\n---\n## Three\n",
@@ -113,7 +141,8 @@ test("Present: ArrowRight/ArrowLeft hard-cut to the next/previous Slide and upda
   expect(window.location.pathname).toBe("/1");
 });
 
-test("Present: a deep link and a skip via popstate are hard cuts; a sequential back/forward connects", () => {
+test("Present, opened as the audience window: a deep link and a skip via popstate are hard cuts; a sequential back/forward connects", () => {
+  becomeAudienceWindow();
   window.history.replaceState(null, "", "/3");
   const deck = deckFor(
     "---\ntheme: @speechdeck/themes/harbour\n---\n# One\n---\n## Two\n---\nenter: connected\n## Three\n",
@@ -274,4 +303,175 @@ test("UpNext shows the next Slide, not the current one", () => {
   const upNext = UpNext() as unknown as HTMLElement;
   expect(upNext.querySelector(".preview-tag")?.textContent).toBe("Up next");
   expect(upNext.querySelector(".preview-stage")?.querySelector("h2")?.textContent).toBe("Two");
+});
+
+test("Present defaults to the speaker's own composition: Speech dominant, a rail, and an Open audience window button", () => {
+  window.history.replaceState(null, "", "/1");
+  const deck = deckFor(THREE_SLIDE_DECK);
+
+  const root = Present({ deck }) as unknown as HTMLElement;
+  expect(root.className).toBe("present");
+  expect(root.dataset["composition"]).toBe("present");
+
+  const speech = root.querySelector(".speech");
+  expect(speech?.tagName).toBe("MAIN");
+  expect(speech?.textContent).toBe("Speech one.");
+
+  const rail = root.querySelector(".rail");
+  const buttons = rail?.querySelectorAll("button") ?? [];
+  expect(buttons).toHaveLength(2);
+  expect(buttons[0]?.className).toBe("open-audience");
+  expect(buttons[0]?.textContent).toBe("Open audience window");
+});
+
+test("Present: a click on Open audience window opens the Slide URL; it does not auto-open", () => {
+  window.history.replaceState(null, "", "/2");
+  const deck = deckFor(THREE_SLIDE_DECK);
+  const openSpy = vi.spyOn(window, "open").mockReturnValue(null);
+
+  const root = Present({ deck }) as unknown as HTMLElement;
+  expect(openSpy).not.toHaveBeenCalled();
+
+  const button = root.querySelector(".open-audience") as HTMLButtonElement;
+  button.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+
+  expect(openSpy).toHaveBeenCalledTimes(1);
+  expect(openSpy).toHaveBeenCalledWith(window.location.href, "speechdeck-audience");
+
+  openSpy.mockRestore();
+});
+
+test("Present leads: local navigation posts the Slide id on the shared channel", async () => {
+  window.history.replaceState(null, "", "/1");
+  const deck = deckFor(THREE_SLIDE_DECK);
+  const spy = new BroadcastChannel(PRESENTER_VIEW_CHANNEL);
+  const received = waitForMessage(spy);
+
+  Present({ deck });
+  window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight" }));
+
+  expect(await received).toEqual({ type: "slide", slide: "2" });
+  spy.close();
+});
+
+test("Present follows: a Slide id from the channel moves this window's URL and Frame", async () => {
+  window.history.replaceState(null, "", "/1");
+  const deck = deckFor(THREE_SLIDE_DECK);
+  Present({ deck });
+  expect(useSlide()().id).toBe("1");
+
+  const lead = new BroadcastChannel(PRESENTER_VIEW_CHANNEL);
+  lead.postMessage({ type: "slide", slide: "3" });
+
+  await vi.waitFor(() => expect(window.location.pathname).toBe("/3"));
+  expect(useSlide()().id).toBe("3");
+  lead.close();
+});
+
+test("Present, opened as the audience window, posts { width, height } on mount, including on resize; the speaker's previews then match", async () => {
+  becomeAudienceWindow();
+  window.history.replaceState(null, "", "/1");
+  const deck = deckFor(THREE_SLIDE_DECK);
+  const spy = new BroadcastChannel(PRESENTER_VIEW_CHANNEL);
+
+  const first = waitForMessage(spy);
+  Present({ deck });
+  expect(await first).toEqual({ type: "viewport", width: 1024, height: 768 });
+
+  const second = waitForMessage(spy);
+  window.innerWidth = 390;
+  window.innerHeight = 844;
+  window.dispatchEvent(new Event("resize"));
+  expect(await second).toEqual({ type: "viewport", width: 390, height: 844 });
+
+  spy.close();
+});
+
+test("Present, opened as the audience window, leads: ArrowRight posts the Slide id on the shared channel", async () => {
+  becomeAudienceWindow();
+  window.history.replaceState(null, "", "/1");
+  const deck = deckFor(THREE_SLIDE_DECK);
+  const spy = new BroadcastChannel(PRESENTER_VIEW_CHANNEL);
+
+  const mountedViewport = waitForMessage(spy);
+  Present({ deck });
+  await mountedViewport;
+
+  const slideMessage = waitForMessage(spy);
+  window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight" }));
+  expect(await slideMessage).toEqual({ type: "slide", slide: "2" });
+
+  spy.close();
+});
+
+test("Present, opened as the audience window, follows: a Slide id from the channel updates the URL and the painted Slide", async () => {
+  becomeAudienceWindow();
+  window.history.replaceState(null, "", "/1");
+  const deck = deckFor(THREE_SLIDE_DECK);
+  const el = Present({ deck }) as unknown as HTMLElement;
+
+  const lead = new BroadcastChannel(PRESENTER_VIEW_CHANNEL);
+  lead.postMessage({ type: "slide", slide: "3" });
+
+  await vi.waitFor(() => expect(window.location.pathname).toBe("/3"));
+  expect(el.querySelector("h2")?.textContent).toBe("Three");
+  lead.close();
+});
+
+test("The audience Slide and Presenter view's Speech are each a named main; previews are hidden from the accessibility tree; there is no live region", () => {
+  window.history.replaceState(null, "", "/1");
+  const deck = deckFor(THREE_SLIDE_DECK);
+
+  const presentRoot = Present({ deck }) as unknown as HTMLElement;
+  const speech = presentRoot.querySelector("main.speech");
+  expect(speech?.getAttribute("aria-label")).toBe("Speech");
+  expect(presentRoot.querySelectorAll("[aria-live]")).toHaveLength(0);
+  const previews = presentRoot.querySelectorAll(".preview");
+  expect(previews.length).toBeGreaterThan(0);
+  for (const preview of previews) {
+    expect(preview.getAttribute("aria-hidden")).toBe("true");
+  }
+
+  becomeAudienceWindow();
+  const audienceEl = Present({ deck }) as unknown as HTMLElement;
+  expect(audienceEl.tagName).toBe("MAIN");
+  expect(audienceEl.getAttribute("aria-label")).toBe("One");
+  expect(audienceEl.querySelectorAll("[aria-live]")).toHaveLength(0);
+});
+
+test("An Embed in a preview is inert: a static placeholder, never a live mount", () => {
+  window.history.replaceState(null, "", "/1");
+  const base = deckFor("---\ntheme: @speechdeck/themes/harbour\n---\n# One\n");
+  const deck = {
+    ...base,
+    slides: [
+      {
+        id: "1",
+        enter: "cut" as const,
+        cells: [
+          {
+            blocks: [
+              {
+                kind: "embed" as const,
+                specifier: "./demos/counter.ts",
+                props: null,
+                fallback: "Counter",
+              },
+            ],
+          },
+        ],
+        speech: { blocks: [] },
+      },
+    ],
+  };
+
+  Present({ deck });
+  const preview = Slide({
+    mode: "preview",
+    viewport: { width: 1280, height: 720 },
+  }) as unknown as HTMLElement;
+  const embed = preview.querySelector(".embed");
+  expect(embed?.textContent).toBe("Counter");
+  expect(embed?.getAttribute("data-specifier")).toBe("./demos/counter.ts");
+  expect(preview.querySelector("iframe")).toBeNull();
 });

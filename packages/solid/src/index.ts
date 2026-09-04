@@ -99,6 +99,17 @@ function renderCell(cell: Cell): HTMLElement {
     cellEl.appendChild(heading);
     watchHeadingAlign(heading);
   }
+  // A live Embed guest is future scope (no mount hook exists yet); this placeholder is
+  // rendered identically in Slide's live and preview modes, so a preview can never
+  // become live by accident once mounting ships.
+  if (cell.blocks.length === 1 && block?.kind === "embed") {
+    cellEl.dataset["kind"] = "embed";
+    const embed = document.createElement("div");
+    embed.className = "embed";
+    embed.dataset["specifier"] = block.specifier;
+    embed.textContent = block.fallback ?? "Embed";
+    cellEl.appendChild(embed);
+  }
   return cellEl;
 }
 
@@ -154,52 +165,11 @@ function renderFrame(frame: Frame, tokens: ThemeTokens, appearance: Appearance):
   return slideEl;
 }
 
-let disposePresent: (() => void) | undefined;
-
-export function Present(props: { deck: Deck }): Solid.JSX.Element {
-  disposePresent?.();
-
-  let current = currentAddress();
-  const frame = resolveFrame(props.deck, { to: current });
-  const el = renderFrame(frame, props.deck.tokens, props.deck.appearance);
-
-  function arrive(to: string): void {
-    const arrival: Arrival = { to, from: current };
-    const next = resolveFrame(props.deck, arrival);
-    paintFrame(el, next, props.deck.tokens, props.deck.appearance);
-    current = to;
-  }
-
-  function go(to: string): void {
-    if (to === current) return;
-    window.history.pushState(null, "", `/${to}`);
-    arrive(to);
-  }
-
-  function onKeydown(event: KeyboardEvent): void {
-    if (event.key !== "ArrowRight" && event.key !== "ArrowLeft") return;
-    const target = neighbourAddress(props.deck, current, event.key === "ArrowRight" ? 1 : -1);
-    if (target === undefined) return;
-    event.preventDefault();
-    go(target);
-  }
-
-  function onPopstate(): void {
-    arrive(currentAddress());
-  }
-
-  window.addEventListener("keydown", onKeydown);
-  window.addEventListener("popstate", onPopstate);
-  disposePresent = () => {
-    window.removeEventListener("keydown", onKeydown);
-    window.removeEventListener("popstate", onPopstate);
-  };
-
-  return el as unknown as Solid.JSX.Element;
-}
-
 const PRESENTER_VIEW_CHANNEL = "speechdeck-presenter-view";
 const DEFAULT_AUDIENCE_VIEWPORT: Viewport = { width: 1280, height: 720 };
+/** window.open's target name for the popup Present opens; also how a Present instance
+ *  recognizes itself as that popup (this window's `name`) rather than the speaker's own. */
+const AUDIENCE_WINDOW_NAME = "speechdeck-audience";
 
 type FrameContextValue = {
   frame: () => Frame;
@@ -212,7 +182,8 @@ type FrameContextValue = {
 let frameContext: FrameContextValue | undefined;
 
 function requireFrameCtx(name: string): FrameContextValue {
-  if (frameContext === undefined) throw new Error(`${name} must be called under Rehearse`);
+  if (frameContext === undefined)
+    throw new Error(`${name} must be called under Rehearse or Present`);
   return frameContext;
 }
 
@@ -225,6 +196,22 @@ function readReportedViewport(data: unknown): Viewport | undefined {
   if (typeof width !== "number" || typeof height !== "number") return undefined;
   if (!(width > 0) || !(height > 0)) return undefined;
   return { width, height };
+}
+
+function readReportedSlide(data: unknown): string | undefined {
+  if (typeof data !== "object" || data === null) return undefined;
+  if (!("type" in data) || data.type !== "slide") return undefined;
+  if (!("slide" in data)) return undefined;
+  const slide = (data as { slide: unknown }).slide;
+  return typeof slide === "string" ? slide : undefined;
+}
+
+function postSlideMessage(channel: BroadcastChannel | undefined, id: string): void {
+  channel?.postMessage({ type: "slide", slide: id });
+}
+
+function postViewportMessage(channel: BroadcastChannel | undefined, viewport: Viewport): void {
+  channel?.postMessage({ type: "viewport", width: viewport.width, height: viewport.height });
 }
 
 function formatElapsed(ms: number): string {
@@ -244,6 +231,8 @@ function renderPreview(
 ): { el: HTMLElement; repaint: () => void } {
   const article = document.createElement("article");
   article.className = "preview";
+  // Not a Slide viewport: hidden from the accessibility tree, not a second announcement of the Slide.
+  article.setAttribute("aria-hidden", "true");
 
   const tagEl = document.createElement("span");
   tagEl.className = "preview-tag";
@@ -304,14 +293,26 @@ function renderPreview(
   return { el: article, repaint };
 }
 
-let disposeRehearse: (() => void) | undefined;
+type PresenterSessionOptions = {
+  className: string;
+  composition: string;
+  /** Present: leads/follows the audience window over BroadcastChannel and can open it.
+   *  Rehearse: solo — it only reads a viewport already being reported, it does not lead. */
+  lead: boolean;
+};
 
-export function Rehearse(props: { deck: Deck }): Solid.JSX.Element {
-  disposeRehearse?.();
-  DeckProvider({ deck: props.deck });
+/**
+ * Speech (dominant) + a Now/Up-next preview rail + Elapsed, shared by Rehearse (one window)
+ * and Present's speaker-facing side (which additionally leads/follows the audience window).
+ */
+function mountPresenterSession(
+  deck: Deck,
+  options: PresenterSessionOptions,
+): { root: HTMLElement; dispose: () => void } {
+  DeckProvider({ deck });
 
   let current = currentAddress();
-  let frame = resolveFrame(props.deck, { to: current });
+  let frame = resolveFrame(deck, { to: current });
   let origin = Date.now();
   let viewport: Viewport = DEFAULT_AUDIENCE_VIEWPORT;
   const listeners = new Set<() => void>();
@@ -337,15 +338,153 @@ export function Rehearse(props: { deck: Deck }): Solid.JSX.Element {
   frameContext = ctx;
 
   function arrive(to: string): void {
-    frame = resolveFrame(props.deck, { to, from: current });
+    frame = resolveFrame(deck, { to, from: current });
     current = to;
     notify();
+  }
+
+  /** A local Arrival — this window is the one leading, so the audience window is told. */
+  function go(to: string): void {
+    if (to === current) return;
+    window.history.pushState(null, "", `/${to}`);
+    arrive(to);
+    if (options.lead) postSlideMessage(channel, to);
+  }
+
+  function onKeydown(event: KeyboardEvent): void {
+    if (event.key !== "ArrowRight" && event.key !== "ArrowLeft") return;
+    const target = neighbourAddress(deck, current, event.key === "ArrowRight" ? 1 : -1);
+    if (target === undefined) return;
+    event.preventDefault();
+    go(target);
+  }
+
+  function onPopstate(): void {
+    const to = currentAddress();
+    arrive(to);
+    if (options.lead) postSlideMessage(channel, to);
+  }
+
+  let channel: BroadcastChannel | undefined;
+  if (typeof BroadcastChannel !== "undefined") {
+    channel = new BroadcastChannel(PRESENTER_VIEW_CHANNEL);
+    channel.addEventListener("message", (event: MessageEvent<unknown>) => {
+      const reportedViewport = readReportedViewport(event.data);
+      if (reportedViewport !== undefined) {
+        if (
+          reportedViewport.width === viewport.width &&
+          reportedViewport.height === viewport.height
+        ) {
+          return;
+        }
+        viewport = reportedViewport;
+        notify();
+        return;
+      }
+      if (!options.lead) return;
+      const slideId = readReportedSlide(event.data);
+      if (slideId === undefined || slideId === current) return;
+      if (!deck.slides.some((s) => s.id === slideId)) return;
+      // The audience window led; follow without echoing it back.
+      window.history.pushState(null, "", `/${slideId}`);
+      arrive(slideId);
+    });
+  }
+
+  function openAudience(): void {
+    window.open(window.location.href, AUDIENCE_WINDOW_NAME);
+  }
+
+  window.addEventListener("keydown", onKeydown);
+  window.addEventListener("popstate", onPopstate);
+  const dispose = () => {
+    window.removeEventListener("keydown", onKeydown);
+    window.removeEventListener("popstate", onPopstate);
+    channel?.close();
+    for (const fn of disposers) fn();
+    listeners.clear();
+    frameContext = undefined;
+  };
+
+  const root = document.createElement("div");
+  root.className = options.className;
+  root.dataset["composition"] = options.composition;
+  root.style.setProperty("container-type", "inline-size");
+  root.style.setProperty("container-name", "presenter");
+
+  const speechEl = Speech() as unknown as HTMLElement;
+
+  const rail = document.createElement("aside");
+  rail.className = "rail";
+  const clockEl = Elapsed() as unknown as HTMLElement;
+  const nowEl = Slide({ mode: "preview" }) as unknown as HTMLElement;
+  const nextEl = UpNext() as unknown as HTMLElement;
+  if (options.lead) {
+    const openBtn = document.createElement("button");
+    openBtn.type = "button";
+    openBtn.className = "open-audience";
+    openBtn.textContent = "Open audience window";
+    openBtn.addEventListener("click", () => openAudience());
+    rail.append(openBtn, clockEl, nowEl, nextEl);
+  } else {
+    rail.append(clockEl, nowEl, nextEl);
+  }
+
+  root.append(speechEl, rail);
+
+  return { root, dispose };
+}
+
+let disposeRehearse: (() => void) | undefined;
+
+export function Rehearse(props: { deck: Deck }): Solid.JSX.Element {
+  disposeRehearse?.();
+  const { root, dispose } = mountPresenterSession(props.deck, {
+    className: "rehearse",
+    composition: "rehearse",
+    lead: false,
+  });
+  disposeRehearse = dispose;
+  return root as unknown as Solid.JSX.Element;
+}
+
+let disposePresent: (() => void) | undefined;
+
+/**
+ * The speaker's side, until a click opens the audience window (this Present, mounted in that
+ * popup — recognized by `window.name`) — then it is that Slide: keyboard-operable, the URL
+ * plus BroadcastChannel is the sync, and either side may lead.
+ */
+export function Present(props: { deck: Deck }): Solid.JSX.Element {
+  disposePresent?.();
+
+  const isAudience = typeof window !== "undefined" && window.name === AUDIENCE_WINDOW_NAME;
+  if (!isAudience) {
+    const { root, dispose } = mountPresenterSession(props.deck, {
+      className: "present",
+      composition: "present",
+      lead: true,
+    });
+    disposePresent = dispose;
+    return root as unknown as Solid.JSX.Element;
+  }
+
+  let current = currentAddress();
+  const frame = resolveFrame(props.deck, { to: current });
+  const el = renderFrame(frame, props.deck.tokens, props.deck.appearance);
+
+  function arrive(to: string): void {
+    const arrival: Arrival = { to, from: current };
+    const next = resolveFrame(props.deck, arrival);
+    paintFrame(el, next, props.deck.tokens, props.deck.appearance);
+    current = to;
   }
 
   function go(to: string): void {
     if (to === current) return;
     window.history.pushState(null, "", `/${to}`);
     arrive(to);
+    postSlideMessage(channel, to);
   }
 
   function onKeydown(event: KeyboardEvent): void {
@@ -357,50 +496,48 @@ export function Rehearse(props: { deck: Deck }): Solid.JSX.Element {
   }
 
   function onPopstate(): void {
-    arrive(currentAddress());
+    const to = currentAddress();
+    arrive(to);
+    postSlideMessage(channel, to);
+  }
+
+  function reportViewport(): void {
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+    if (!(width > 0) || !(height > 0)) return;
+    postViewportMessage(channel, { width, height });
+  }
+
+  function onResize(): void {
+    reportViewport();
   }
 
   let channel: BroadcastChannel | undefined;
   if (typeof BroadcastChannel !== "undefined") {
     channel = new BroadcastChannel(PRESENTER_VIEW_CHANNEL);
     channel.addEventListener("message", (event: MessageEvent<unknown>) => {
-      const reported = readReportedViewport(event.data);
-      if (reported === undefined) return;
-      if (reported.width === viewport.width && reported.height === viewport.height) return;
-      viewport = reported;
-      notify();
+      const slideId = readReportedSlide(event.data);
+      if (slideId === undefined || slideId === current) return;
+      if (!props.deck.slides.some((s) => s.id === slideId)) return;
+      // The speaker's window led; follow without echoing it back.
+      window.history.pushState(null, "", `/${slideId}`);
+      arrive(slideId);
     });
   }
 
   window.addEventListener("keydown", onKeydown);
   window.addEventListener("popstate", onPopstate);
-  disposeRehearse = () => {
+  window.addEventListener("resize", onResize);
+  disposePresent = () => {
     window.removeEventListener("keydown", onKeydown);
     window.removeEventListener("popstate", onPopstate);
+    window.removeEventListener("resize", onResize);
     channel?.close();
-    for (const dispose of disposers) dispose();
-    listeners.clear();
-    frameContext = undefined;
   };
 
-  const root = document.createElement("div");
-  root.className = "rehearse";
-  root.dataset["composition"] = "rehearse";
-  root.style.setProperty("container-type", "inline-size");
-  root.style.setProperty("container-name", "presenter");
+  reportViewport();
 
-  const speechEl = Speech() as unknown as HTMLElement;
-
-  const rail = document.createElement("aside");
-  rail.className = "rail";
-  const clockEl = Elapsed() as unknown as HTMLElement;
-  const nowEl = Slide({ mode: "preview" }) as unknown as HTMLElement;
-  const nextEl = UpNext() as unknown as HTMLElement;
-  rail.append(clockEl, nowEl, nextEl);
-
-  root.append(speechEl, rail);
-
-  return root as unknown as Solid.JSX.Element;
+  return el as unknown as Solid.JSX.Element;
 }
 
 export function Inspect(_props: { deck: Deck }): Solid.JSX.Element {
@@ -470,7 +607,8 @@ export function Slide(props: {
 
 export function Speech(): Solid.JSX.Element {
   const ctx = requireFrameCtx("Speech");
-  const section = document.createElement("section");
+  // Presenter view's main: the primary content of this window, distinct from the audience's.
+  const section = document.createElement("main");
   section.className = "speech";
   section.setAttribute("aria-label", "Speech");
   section.style.overflowY = "auto";
