@@ -8,6 +8,8 @@ import {
   type EmbedGuest,
   type Frame,
   type Image,
+  type Motion,
+  type Named,
   type Slide as SlideDoc,
   type Speech as SpeechDoc,
   type ThemeTokens,
@@ -274,6 +276,18 @@ function focusSlideOnEscape(slideEl: HTMLElement): () => void {
   return () => document.removeEventListener("keydown", onKeydown);
 }
 
+/** A mid-transition resize skips to the end state rather than animating toward a
+ *  moving target; the browser has no native resize hook for this, so it is watched
+ *  explicitly. Ordinary reflow (container queries) then applies on its own. */
+function watchResizeSkipsTransition(slideEl: HTMLElement): () => void {
+  if (typeof ResizeObserver === "undefined") return () => {};
+  const observer = new ResizeObserver(() => {
+    document.activeViewTransition?.skipTransition();
+  });
+  observer.observe(slideEl);
+  return () => observer.disconnect();
+}
+
 function renderFrame(
   frame: Frame,
   tokens: ThemeTokens,
@@ -284,13 +298,89 @@ function renderFrame(
   slideEl.className = "slide";
   paintFrame(slideEl, frame, tokens, appearance, loadEmbed);
   const disposeEscape = focusSlideOnEscape(slideEl);
+  const disposeResize = watchResizeSkipsTransition(slideEl);
   return {
     el: slideEl,
     dispose: () => {
       disposeEscape();
+      disposeResize();
       disposeEmbedsWithin(slideEl);
     },
   };
+}
+
+/** A heading Cell or an image Cell renders as a single child under `.cell`; identity
+ *  names line up with Frame.names positionally because core mints both from the same
+ *  document-order walk over the Slide's Cells (ADR 0005). */
+function namedTargets(slideEl: HTMLElement): HTMLElement[] {
+  const targets: HTMLElement[] = [];
+  for (const cellEl of slideEl.querySelectorAll<HTMLElement>(
+    '.cell[data-kind="heading"], .cell[data-kind="image"]',
+  )) {
+    const target = cellEl.firstElementChild;
+    if (target instanceof HTMLElement) targets.push(target);
+  }
+  return targets;
+}
+
+/** The browser pairs an outgoing and incoming element by a matching
+ *  view-transition-name; since core mints that name from content identity alone, this
+ *  never needs to compare `from` and `to` against each other. `view-transition-class`
+ *  carries only the kind, never the name, so a Theme cannot single out one Cell. */
+function applyNames(slideEl: HTMLElement, names: readonly Named[]): void {
+  const targets = namedTargets(slideEl);
+  names.forEach((named, i) => {
+    const target = targets[i];
+    if (target === undefined) return;
+    target.style.setProperty("view-transition-name", named.name);
+    target.style.setProperty("view-transition-class", named.class);
+  });
+}
+
+function prefersReducedMotion(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  );
+}
+
+/** `always` still runs connected motion regardless of the environment; `auto` (default)
+ *  honours prefers-reduced-motion. A hard cut never runs it either way. */
+function shouldRunConnectedMotion(frame: Frame, motion: Motion): boolean {
+  if (frame.enter !== "connected") return false;
+  return motion === "always" || !prefersReducedMotion();
+}
+
+/** Repaints a live Slide for an Arrival. A hard cut (or no View Transition support, or
+ *  reduced motion under `auto`) repaints directly and skips any transition still in
+ *  flight so it cannot keep animating over content that already hard-cut. A connected
+ *  edge wraps the repaint in a same-document View Transition; starting a new one while
+ *  one is in flight skips the previous one to its end state natively — a mashed arrow
+ *  always wins, with no interruption policy to configure. */
+function repaintFrame(
+  slideEl: HTMLElement,
+  from: Frame,
+  to: Frame,
+  tokens: ThemeTokens,
+  appearance: Appearance,
+  motion: Motion,
+  loadEmbed: LoadEmbed,
+): void {
+  if (
+    from.slide.id === to.slide.id ||
+    !shouldRunConnectedMotion(to, motion) ||
+    typeof document.startViewTransition !== "function"
+  ) {
+    document.activeViewTransition?.skipTransition();
+    paintFrame(slideEl, to, tokens, appearance, loadEmbed);
+    return;
+  }
+  applyNames(slideEl, from.names);
+  document.startViewTransition(() => {
+    paintFrame(slideEl, to, tokens, appearance, loadEmbed);
+    applyNames(slideEl, to.names);
+  });
 }
 
 const PRESENTER_VIEW_CHANNEL = "speechdeck-presenter-view";
@@ -304,7 +394,7 @@ type FrameContextValue = {
   audienceViewport: () => Viewport;
   elapsedMs: () => number;
   resetElapsed: () => void;
-  onChange: (fn: () => void) => () => void;
+  onChange: (fn: (from: Frame, to: Frame) => void) => () => void;
   addDisposer: (fn: () => void) => void;
 };
 let frameContext: FrameContextValue | undefined;
@@ -444,11 +534,11 @@ function mountPresenterSession(
   let frame = resolveFrame(deck, { to: current });
   let origin = Date.now();
   let viewport: Viewport = DEFAULT_AUDIENCE_VIEWPORT;
-  const listeners = new Set<() => void>();
+  const listeners = new Set<(from: Frame, to: Frame) => void>();
   const disposers: Array<() => void> = [];
 
-  function notify(): void {
-    for (const fn of listeners) fn();
+  function notify(from: Frame, to: Frame): void {
+    for (const fn of listeners) fn(from, to);
   }
 
   const ctx: FrameContextValue = {
@@ -467,9 +557,10 @@ function mountPresenterSession(
   frameContext = ctx;
 
   function arrive(to: string): void {
+    const from = frame;
     frame = resolveFrame(deck, { to, from: current });
     current = to;
-    notify();
+    notify(from, frame);
   }
 
   /** A local Arrival — this window is the one leading, so the audience window is told. */
@@ -507,7 +598,7 @@ function mountPresenterSession(
           return;
         }
         viewport = reportedViewport;
-        notify();
+        notify(frame, frame);
         return;
       }
       if (!options.lead) return;
@@ -617,9 +708,18 @@ export function Present(props: { deck: Deck; loadEmbed?: LoadEmbed }): Solid.JSX
   );
 
   function arrive(to: string): void {
+    const from = resolveFrame(props.deck, { to: current });
     const arrival: Arrival = { to, from: current };
     const next = resolveFrame(props.deck, arrival);
-    paintFrame(el, next, props.deck.tokens, props.deck.appearance, loadEmbed);
+    repaintFrame(
+      el,
+      from,
+      next,
+      props.deck.tokens,
+      props.deck.appearance,
+      props.deck.motion,
+      loadEmbed,
+    );
     current = to;
   }
 
@@ -741,8 +841,8 @@ export function Slide(props: {
     el.style.height = "100%";
     ctx.addDisposer(dispose);
     ctx.addDisposer(
-      ctx.onChange(() =>
-        paintFrame(el, ctx.frame(), deck.tokens, deck.appearance, deckCtx.loadEmbed),
+      ctx.onChange((from, to) =>
+        repaintFrame(el, from, to, deck.tokens, deck.appearance, deck.motion, deckCtx.loadEmbed),
       ),
     );
     return el as unknown as Solid.JSX.Element;

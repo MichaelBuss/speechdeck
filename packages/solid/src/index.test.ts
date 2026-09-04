@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseDeck, type FileMap } from "@speechdeck/core";
-import { beforeEach, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import {
   DeckProvider,
   Elapsed,
@@ -49,6 +49,53 @@ beforeEach(() => {
   window.innerWidth = 1024;
   window.innerHeight = 768;
 });
+
+// happy-dom has no View Transition API; a test that needs one installs this stub and
+// this restores the ambient (unsupported) state afterward so other tests keep exercising
+// the no-support fallback path.
+afterEach(() => {
+  delete (document as { startViewTransition?: unknown }).startViewTransition;
+  (document as unknown as { activeViewTransition: unknown }).activeViewTransition = null;
+  vi.unstubAllGlobals();
+});
+
+type FakeViewTransition = {
+  ready: Promise<void>;
+  updateCallbackDone: Promise<void>;
+  finished: Promise<void>;
+  skipTransition: () => void;
+};
+
+function stubViewTransition(): {
+  start: ReturnType<typeof vi.fn>;
+  skipTransition: ReturnType<typeof vi.fn>;
+} {
+  const skipTransition = vi.fn();
+  const vt: FakeViewTransition = {
+    ready: Promise.resolve(),
+    updateCallbackDone: Promise.resolve(),
+    finished: Promise.resolve(),
+    skipTransition,
+  };
+  const start = vi.fn((cb?: () => unknown) => {
+    cb?.();
+    return vt;
+  });
+  (document as unknown as { startViewTransition: unknown }).startViewTransition = start;
+  return { start, skipTransition };
+}
+
+function stubReducedMotion(reduced: boolean): void {
+  vi.stubGlobal(
+    "matchMedia",
+    vi.fn((query: string) => ({
+      matches: query.includes("prefers-reduced-motion") && reduced,
+      media: query,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    })),
+  );
+}
 
 test("Present is not implemented", () => {
   expect(typeof Present).toBe("function");
@@ -404,6 +451,137 @@ test("Present, opened as the audience window: a deep link and a skip via popstat
   window.history.replaceState(null, "", "/3");
   window.dispatchEvent(new PopStateEvent("popstate"));
   expect(el.dataset["enter"]).toBe("connected");
+});
+
+const SAME_HEADING_DECK =
+  "---\ntheme: @speechdeck/themes/harbour\n---\n## Same\n---\nenter: connected\n## Same\n";
+
+test("Present, opened as the audience window: a connected sequential Arrival runs a View Transition naming the persisting heading", () => {
+  becomeAudienceWindow();
+  window.history.replaceState(null, "", "/1");
+  const deck = deckFor(SAME_HEADING_DECK);
+  const el = Present({ deck }) as unknown as HTMLElement;
+
+  let beforeName: string | undefined;
+  const { start } = stubViewTransition();
+  start.mockImplementationOnce((cb?: () => unknown) => {
+    beforeName = el.querySelector("h2")?.style.getPropertyValue("view-transition-name");
+    cb?.();
+    return {
+      ready: Promise.resolve(),
+      updateCallbackDone: Promise.resolve(),
+      finished: Promise.resolve(),
+      skipTransition: vi.fn(),
+    };
+  });
+
+  window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight" }));
+
+  expect(start).toHaveBeenCalledTimes(1);
+  expect(beforeName).toBeTruthy();
+  const heading = el.querySelector("h2");
+  expect(heading?.textContent).toBe("Same");
+  expect(heading?.style.getPropertyValue("view-transition-name")).toBe(beforeName);
+  expect(heading?.style.getPropertyValue("view-transition-class")).toBe("heading");
+});
+
+test("Present, opened as the audience window: a hard cut never opens a View Transition, even mid-Deck", () => {
+  becomeAudienceWindow();
+  window.history.replaceState(null, "", "/1");
+  const deck = deckFor(
+    "---\ntheme: @speechdeck/themes/harbour\n---\n# One\n---\n## Two\n---\n## Three\n",
+  );
+  Present({ deck });
+  const { start } = stubViewTransition();
+
+  window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight" }));
+  window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight" }));
+
+  expect(start).not.toHaveBeenCalled();
+});
+
+test("Present, opened as the audience window: a deep link to a Slide that declares enter: connected is still a hard cut with no View Transition", () => {
+  becomeAudienceWindow();
+  window.history.replaceState(null, "", "/2");
+  const deck = deckFor(SAME_HEADING_DECK);
+  const { start } = stubViewTransition();
+
+  Present({ deck });
+
+  expect(start).not.toHaveBeenCalled();
+});
+
+test("Present, opened as the audience window: Motion auto hard-cuts a connected edge when the environment prefers reduced motion", () => {
+  becomeAudienceWindow();
+  window.history.replaceState(null, "", "/1");
+  const deck = deckFor(SAME_HEADING_DECK);
+  expect(deck.motion).toBe("auto");
+  Present({ deck });
+  stubReducedMotion(true);
+  const { start } = stubViewTransition();
+
+  window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight" }));
+
+  expect(start).not.toHaveBeenCalled();
+});
+
+test("Present, opened as the audience window: Motion always still runs connected motion under reduced motion", () => {
+  becomeAudienceWindow();
+  window.history.replaceState(null, "", "/1");
+  const deck = deckFor(
+    "---\ntheme: @speechdeck/themes/harbour\nmotion: always\n---\n## Same\n---\nenter: connected\n## Same\n",
+  );
+  expect(deck.motion).toBe("always");
+  Present({ deck });
+  stubReducedMotion(true);
+  const { start } = stubViewTransition();
+
+  window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight" }));
+
+  expect(start).toHaveBeenCalledTimes(1);
+});
+
+test("Present, opened as the audience window: Motion always does not invent motion on an unconnected Slide", () => {
+  becomeAudienceWindow();
+  window.history.replaceState(null, "", "/1");
+  const deck = deckFor(
+    "---\ntheme: @speechdeck/themes/harbour\nmotion: always\n---\n# One\n---\n## Two\n",
+  );
+  Present({ deck });
+  const { start } = stubViewTransition();
+
+  window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight" }));
+
+  expect(start).not.toHaveBeenCalled();
+});
+
+test("Present, opened as the audience window: a resize observed on the Slide skips any active View Transition, then reflows", () => {
+  // watchHeadingAlign also observes a ResizeObserver on the heading; every observed
+  // callback is fired below rather than relying on construction order to find "the" one.
+  const observedCallbacks: Array<() => void> = [];
+  class FakeResizeObserver {
+    constructor(cb: () => void) {
+      observedCallbacks.push(cb);
+    }
+    observe(): void {}
+    disconnect(): void {}
+  }
+  vi.stubGlobal("ResizeObserver", FakeResizeObserver);
+
+  becomeAudienceWindow();
+  window.history.replaceState(null, "", "/1");
+  const deck = deckFor(SAME_HEADING_DECK);
+  Present({ deck });
+
+  const skipTransition = vi.fn();
+  (document as unknown as { activeViewTransition: { skipTransition: () => void } | null })[
+    "activeViewTransition"
+  ] = { skipTransition };
+
+  expect(observedCallbacks.length).toBeGreaterThan(0);
+  for (const cb of observedCallbacks) cb();
+
+  expect(skipTransition).toHaveBeenCalledTimes(1);
 });
 
 const THREE_SLIDE_DECK =

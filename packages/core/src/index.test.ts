@@ -134,6 +134,76 @@ test("resolveFrame: first paint, a deep link, and a skip are hard cuts", () => {
   expect(sequential.enter).toBe("connected");
 });
 
+test("parseDeck: enter: connected on the first Slide is a Lint; the Arrival is still a hard cut", () => {
+  const source = "---\ntheme: @speechdeck/themes/harbour\n---\nenter: connected\n# One\n";
+  const { deck, diagnostics } = parseDeck(source, files);
+
+  expect(diagnostics).toHaveLength(1);
+  expect(diagnostics[0]).toMatchObject({ kind: "connected-on-first", slide: "1" });
+
+  const frame = resolveFrame(deck, { to: "1" });
+  expect(frame.enter).toBe("cut");
+});
+
+test("resolveFrame: a heading with the same text mints the same identity name on both sides of a connected edge", () => {
+  const source =
+    "---\ntheme: @speechdeck/themes/harbour\n---\n## Same\n---\nenter: connected\n## Same\n---\n## Different\n";
+  const { deck } = parseDeck(source, files);
+
+  const from = resolveFrame(deck, { to: "1" });
+  const to = resolveFrame(deck, { to: "2", from: "1" });
+  const other = resolveFrame(deck, { to: "3", from: "2" });
+
+  expect(from.names).toHaveLength(1);
+  expect(to.names).toHaveLength(1);
+  expect(from.names[0]).toMatchObject({ class: "heading" });
+  expect(to.names[0]?.name).toBe(from.names[0]?.name);
+  expect(other.names[0]?.name).not.toBe(to.names[0]?.name);
+});
+
+test("resolveFrame: an image with the same src mints the same identity name; authors do not name the pairing", () => {
+  const source =
+    "---\ntheme: @speechdeck/themes/harbour\n---\n![](./a.jpg)\n---\nenter: connected\n![](./a.jpg)\n---\n![](./b.jpg)\n";
+  const { deck } = parseDeck(source, files);
+
+  const from = resolveFrame(deck, { to: "1" });
+  const to = resolveFrame(deck, { to: "2", from: "1" });
+  const other = resolveFrame(deck, { to: "3", from: "2" });
+
+  expect(from.names[0]).toMatchObject({ class: "figure" });
+  expect(to.names[0]?.name).toBe(from.names[0]?.name);
+  expect(other.names[0]?.name).not.toBe(to.names[0]?.name);
+  // No id on either the Markdown or the Frame: the name is minted from the src alone.
+  expect(to.names[0]?.name).not.toContain("a.jpg");
+});
+
+test("resolveFrame: identity names are valid view-transition-name idents", () => {
+  const source = "---\ntheme: @speechdeck/themes/harbour\n---\n## A heading, with punctuation!\n";
+  const { deck } = parseDeck(source, files);
+  const frame = resolveFrame(deck, { to: "1" });
+  expect(frame.names[0]?.name).toMatch(/^sd-h-[0-9a-z]+$/);
+});
+
+test("parseDeck: two headings with the same text on one Slide fail the build; runtime does not suffix", () => {
+  const source = "---\ntheme: @speechdeck/themes/harbour\n---\n### Same\n\n#### Same\n";
+  expect(() => parseDeck(source, files)).toThrow();
+});
+
+test("parseDeck: two images with the same src on one Slide fail the build", () => {
+  const source = "---\ntheme: @speechdeck/themes/harbour\n---\n![](./a.jpg)\n\n![](./a.jpg)\n";
+  expect(() => parseDeck(source, files)).toThrow();
+});
+
+test("parseDeck: two Slides sharing a heading is not a same-Slide collision", () => {
+  const source = "---\ntheme: @speechdeck/themes/harbour\n---\n## Same\n---\n## Same\n";
+  expect(() => parseDeck(source, files)).not.toThrow();
+});
+
+test("core has no mintNames export and no public transition API (ADR 0005, ADR 0013)", async () => {
+  const core = await import("./index.ts");
+  expect((core as Record<string, unknown>)["mintNames"]).toBeUndefined();
+});
+
 test("parseDeck: two Slides may share a heading; they do not share an address", () => {
   const source = "---\ntheme: @speechdeck/themes/harbour\n---\n## Same\n---\n## Same\n";
   const { deck } = parseDeck(source, files);
