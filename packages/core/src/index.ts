@@ -189,8 +189,61 @@ function soleHeading(cell: Cell): HeadingBlock | undefined {
   return cell.blocks.length === 1 && block?.kind === "heading" ? block : undefined;
 }
 
+function soleImage(cell: Cell): ImageBlock | undefined {
+  const block = cell.blocks[0];
+  return cell.blocks.length === 1 && block?.kind === "image" ? block : undefined;
+}
+
 function hasImage(cell: Cell): boolean {
   return cell.blocks.some((block) => block.kind === "image");
+}
+
+/** FNV-1a: deterministic and dependency-free, so the same heading text or image src
+ *  always mints the same view-transition-name — on either side of a connected edge,
+ *  in any Deck. */
+function fnv1a32(input: string): string {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < input.length; i++) {
+    hash ^= input.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(36);
+}
+
+/** A view-transition-name is a CSS custom-ident: raw heading text or an image src
+ *  cannot serve directly, so identity is hashed into one instead of slugged (a slug
+ *  can collide across different identities; a hash of the full identity does not). */
+function mintName(kind: "heading" | "figure", identity: string): string {
+  return `sd-${kind === "heading" ? "h" : "f"}-${fnv1a32(identity)}`;
+}
+
+/** Duplicate identity fail the build (ADR 0005): the runtime never suffixes a name,
+ *  so two headings with the same text, or two images with the same src, on one Slide
+ *  could not both keep it. */
+function assertUniqueIdentities(cells: readonly Cell[], slideId: string): void {
+  const headingTexts = new Set<string>();
+  const imageSrcs = new Set<string>();
+  for (const cell of cells) {
+    const heading = soleHeading(cell);
+    if (heading !== undefined) {
+      if (headingTexts.has(heading.text)) {
+        throw new Error(
+          `Slide ${slideId} has two headings with the text "${heading.text}"; identity names cannot repeat within a Slide.`,
+        );
+      }
+      headingTexts.add(heading.text);
+      continue;
+    }
+    const image = soleImage(cell);
+    if (image !== undefined) {
+      if (imageSrcs.has(image.src)) {
+        throw new Error(
+          `Slide ${slideId} has two images with the src "${image.src}"; identity names cannot repeat within a Slide.`,
+        );
+      }
+      imageSrcs.add(image.src);
+    }
+  }
 }
 
 function isH4Only(cell: Cell): boolean {
@@ -783,6 +836,7 @@ function buildSlide(
     });
   }
   const { cells, speech, background } = parseBody(source.bodyLines, id, files, diagnostics);
+  assertUniqueIdentities(cells, id);
   const auto = autoLayout(cells);
   const layoutField = source.fields["layout"];
   let layout: LayoutName | undefined;
@@ -896,7 +950,14 @@ export function resolveFrame(deck: Deck, arrival: Arrival): Frame {
   for (const cell of slide.cells) {
     const heading = soleHeading(cell);
     if (heading !== undefined) {
-      names.push({ identity: `heading:${heading.text}`, name: heading.text, class: "heading" });
+      const identity = `heading:${heading.text}`;
+      names.push({ identity, name: mintName("heading", identity), class: "heading" });
+      continue;
+    }
+    const image = soleImage(cell);
+    if (image !== undefined) {
+      const identity = `image:${image.src}`;
+      names.push({ identity, name: mintName("figure", identity), class: "figure" });
     }
   }
 
