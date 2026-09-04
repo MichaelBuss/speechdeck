@@ -70,6 +70,55 @@ test("speechdeck: transforms the Deck into a module exporting a highlighted Deck
   expect(ctx.addWatchFile).toHaveBeenCalledWith(join(dir, "deck.md"));
 });
 
+function withInspectEnv(value: string | undefined, fn: () => void): void {
+  const original = process.env["SPEECHDECK_INSPECT"];
+  if (value === undefined) delete process.env["SPEECHDECK_INSPECT"];
+  else process.env["SPEECHDECK_INSPECT"] = value;
+  try {
+    fn();
+  } finally {
+    if (original === undefined) delete process.env["SPEECHDECK_INSPECT"];
+    else process.env["SPEECHDECK_INSPECT"] = original;
+  }
+}
+
+function configureServer(p: ReturnType<typeof speechdeck>, server: unknown): void {
+  (p as unknown as { configureServer: (s: unknown) => void }).configureServer(server);
+}
+
+test("speechdeck: by default, 404s /inspect.html on the dev server and lets everything else through", () => {
+  withInspectEnv(undefined, () => {
+    const use = vi.fn();
+    configureServer(speechdeck(), { middlewares: { use } });
+    expect(use).toHaveBeenCalledTimes(1);
+    const middleware = use.mock.calls[0]?.[0] as (
+      req: { url?: string },
+      res: { statusCode?: number; end: (body?: string) => void },
+      next: () => void,
+    ) => void;
+
+    const blocked = { statusCode: 200, end: vi.fn() };
+    const next = vi.fn();
+    middleware({ url: "/inspect.html" }, blocked, next);
+    expect(blocked.statusCode).toBe(404);
+    expect(blocked.end).toHaveBeenCalledTimes(1);
+    expect(next).not.toHaveBeenCalled();
+
+    const passed = { statusCode: 200, end: vi.fn() };
+    const next2 = vi.fn();
+    middleware({ url: "/index.html" }, passed, next2);
+    expect(next2).toHaveBeenCalledTimes(1);
+  });
+});
+
+test("speechdeck: SPEECHDECK_INSPECT=1 serves /inspect.html on the dev server", () => {
+  withInspectEnv("1", () => {
+    const use = vi.fn();
+    configureServer(speechdeck(), { middlewares: { use } });
+    expect(use).not.toHaveBeenCalled();
+  });
+});
+
 test("speechdeck: watches a file-backed code Cell's path and forwards Lints as warnings", async () => {
   writeFileSync(join(dir, "counter.ts"), "let n = 0;\n");
   const source = ["---", "theme: ./theme", "---", "layout: grid", "```ts ./counter.ts", "```"].join(

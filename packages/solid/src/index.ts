@@ -842,8 +842,294 @@ export function Present(props: { deck: Deck; loadEmbed?: LoadEmbed }): Solid.JSX
   return el as unknown as Solid.JSX.Element;
 }
 
-export function Inspect(_props: { deck: Deck }): Solid.JSX.Element {
-  throw new Error("not implemented");
+export type InspectPresetId =
+  | "fill"
+  | "16-9"
+  | "zoom"
+  | "square"
+  | "phone"
+  | "phone-l"
+  | "freeform";
+
+type InspectPresetSpec = { id: InspectPresetId; label: string; size?: Viewport };
+
+/** Seven named viewports (ADR 0014). Fill has no size of its own — it is the window,
+ *  never dragged. Freeform has no fixed size either — it holds whatever the author last
+ *  dragged into it, or the first-ever Freeform size, 1280×720, until something is. */
+const INSPECT_PRESETS: readonly InspectPresetSpec[] = [
+  { id: "fill", label: "Fill" },
+  { id: "16-9", label: "16:9 1280×720", size: { width: 1280, height: 720 } },
+  { id: "zoom", label: "Zoom 900×700", size: { width: 900, height: 700 } },
+  { id: "square", label: "Square 800×800", size: { width: 800, height: 800 } },
+  { id: "phone", label: "Phone 390×844", size: { width: 390, height: 844 } },
+  { id: "phone-l", label: "Phone landscape 844×390", size: { width: 844, height: 390 } },
+  { id: "freeform", label: "Freeform" },
+];
+
+const INSPECT_DEFAULT_FREEFORM: Viewport = { width: 1280, height: 720 };
+
+function isInspectPresetId(value: string | null): value is InspectPresetId {
+  return INSPECT_PRESETS.some((preset) => preset.id === value);
+}
+
+function readInspectViewportFromUrl(): { preset: InspectPresetId; freeform: Viewport } {
+  const params = new URLSearchParams(window.location.search);
+  const presetParam = params.get("preset");
+  const preset = isInspectPresetId(presetParam) ? presetParam : "fill";
+  const width = Number(params.get("width"));
+  const height = Number(params.get("height"));
+  const hasStoredFreeform =
+    Number.isFinite(width) && width > 0 && Number.isFinite(height) && height > 0;
+  return { preset, freeform: hasStoredFreeform ? { width, height } : INSPECT_DEFAULT_FREEFORM };
+}
+
+/** Only Freeform round-trips a size on the URL; a named preset's size lives in
+ *  INSPECT_PRESETS, so reloading it is exact without the URL ever carrying its pixels. */
+function writeInspectViewportToUrl(preset: InspectPresetId, freeform: Viewport): void {
+  const params = new URLSearchParams(window.location.search);
+  params.set("preset", preset);
+  if (preset === "freeform") {
+    params.set("width", String(Math.round(freeform.width)));
+    params.set("height", String(Math.round(freeform.height)));
+  } else {
+    params.delete("width");
+    params.delete("height");
+  }
+  window.history.replaceState(null, "", `${window.location.pathname}?${params.toString()}`);
+}
+
+function inspectViewport(preset: InspectPresetId, freeform: Viewport): Viewport {
+  if (preset === "fill") {
+    return { width: window.innerWidth, height: window.innerHeight };
+  }
+  if (preset === "freeform") return freeform;
+  return INSPECT_PRESETS.find((p) => p.id === preset)?.size ?? INSPECT_DEFAULT_FREEFORM;
+}
+
+function elementRefuses(el: HTMLElement): boolean {
+  return el.scrollWidth - el.clientWidth > 2 || el.scrollHeight - el.clientHeight > 8;
+}
+
+function spillsOutside(inner: DOMRect, outer: DOMRect): boolean {
+  return (
+    inner.right > outer.right + 1 ||
+    inner.bottom > outer.bottom + 1 ||
+    inner.left < outer.left - 1 ||
+    inner.top < outer.top - 1
+  );
+}
+
+/** Refuse is measured at this viewport, from the DOM the Slide actually laid out into —
+ *  never derived from Cell counts, and never a reason to scale or scroll the stage. */
+function measureRefuse(slideEl: HTMLElement): boolean {
+  const cells = slideEl.querySelector<HTMLElement>(".cells");
+  if (cells === null) return false;
+  if (elementRefuses(cells)) return true;
+  const outer = cells.getBoundingClientRect();
+  for (const cell of cells.querySelectorAll<HTMLElement>(".cell")) {
+    const cellBox = cell.getBoundingClientRect();
+    if (elementRefuses(cell) || spillsOutside(cellBox, outer)) return true;
+    for (const node of cell.querySelectorAll<HTMLElement>(
+      "h1, h2, h3, h4, h5, h6, p, pre, .embed, img",
+    )) {
+      if (elementRefuses(node) || spillsOutside(node.getBoundingClientRect(), cellBox)) return true;
+    }
+  }
+  return false;
+}
+
+let disposeInspect: (() => void) | undefined;
+
+/**
+ * The author-facing composition (ADR 0014): a Slide on a stage at a named viewport, with
+ * a readout of Layout, Cells, and Refuse always on. Not Presenter view — there is no
+ * Speech here. Its own Arrival is local: it never opens or joins Present's
+ * BroadcastChannel, so advancing here never moves the audience Slide. Embeds are live —
+ * the stage is a Slide viewport, not a preview.
+ */
+export function Inspect(props: { deck: Deck; loadEmbed?: LoadEmbed }): Solid.JSX.Element {
+  disposeInspect?.();
+  const { deck } = props;
+  const loadEmbed = props.loadEmbed ?? defaultLoadEmbed;
+  DeckProvider({ deck, loadEmbed });
+
+  let current = deck.slides[0]?.id ?? "1";
+  let frame = resolveFrame(deck, { to: current });
+  let { preset, freeform } = readInspectViewportFromUrl();
+  let slideHandle: { el: HTMLElement; dispose: () => void } | undefined;
+  let dragging:
+    | { pointerId: number; startX: number; startY: number; startW: number; startH: number }
+    | undefined;
+
+  const root = document.createElement("div");
+  root.className = "inspect";
+  root.dataset["composition"] = "inspect";
+
+  const presetsEl = document.createElement("div");
+  presetsEl.className = "inspect-presets";
+  const presetButtons = new Map<InspectPresetId, HTMLButtonElement>();
+  for (const spec of INSPECT_PRESETS) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "inspect-preset";
+    button.dataset["preset"] = spec.id;
+    button.textContent = spec.label;
+    button.addEventListener("click", () => selectPreset(spec.id));
+    presetsEl.appendChild(button);
+    presetButtons.set(spec.id, button);
+  }
+
+  const stageWrap = document.createElement("div");
+  stageWrap.className = "inspect-stage-wrap";
+  const stage = document.createElement("div");
+  stage.className = "inspect-stage";
+  stageWrap.appendChild(stage);
+
+  const handle = document.createElement("div");
+  handle.className = "inspect-handle";
+
+  const readout = document.createElement("dl");
+  readout.className = "inspect-readout";
+  readout.setAttribute("aria-label", "Inspect readout");
+
+  function readoutRow(field: string, term: string): HTMLElement {
+    const rowEl = document.createElement("div");
+    rowEl.className = "readout-row";
+    rowEl.dataset["field"] = field;
+    const dt = document.createElement("dt");
+    dt.textContent = term;
+    const dd = document.createElement("dd");
+    rowEl.append(dt, dd);
+    readout.appendChild(rowEl);
+    return dd;
+  }
+
+  const layoutDd = readoutRow("layout", "Layout");
+  const impossibleDd = readoutRow("impossible", "Impossible override");
+  const cellsDd = readoutRow("cells", "Cells");
+  const stageDd = readoutRow("stage", "Stage");
+  const headingDd = readoutRow("heading", "Heading align");
+  const refuseDd = readoutRow("refuse", "Refuse");
+
+  root.append(presetsEl, stageWrap, readout);
+
+  function applyStageSize(): void {
+    stage.dataset["preset"] = preset;
+    handle.style.display = preset === "fill" ? "none" : "block";
+    if (preset === "fill") {
+      stage.style.width = "100%";
+      stage.style.height = "100%";
+    } else {
+      const size = inspectViewport(preset, freeform);
+      stage.style.width = `${size.width}px`;
+      stage.style.height = `${size.height}px`;
+    }
+    for (const [id, button] of presetButtons) {
+      button.setAttribute("aria-pressed", String(id === preset));
+    }
+  }
+
+  function paintStage(): void {
+    slideHandle?.dispose();
+    const rendered = renderFrame(frame, deck.tokens, deck.appearance, loadEmbed);
+    rendered.el.style.width = "100%";
+    rendered.el.style.height = "100%";
+    slideHandle = rendered;
+    stage.replaceChildren(rendered.el, handle);
+    applyStageSize();
+  }
+
+  /** Layout, Cells, stage size, heading align, and Refuse are always on here (ADR 0014).
+   *  Travel, identity names, `enter`, Speech, and Embed readiness never appear. */
+  function repaintReadout(): void {
+    layoutDd.textContent =
+      frame.layoutSource === "auto"
+        ? `${frame.layout} (auto)`
+        : `${frame.layout} (override, auto ${frame.layoutAuto})`;
+    const impossible = frame.layoutSource === "override" && frame.layout !== frame.slide.layout;
+    impossibleDd.textContent = impossible ? "yes — lint, auto rendered" : "no";
+    cellsDd.textContent = String(frame.slide.cells.length);
+    const size = inspectViewport(preset, freeform);
+    stageDd.textContent = `${Math.round(size.width)}×${Math.round(size.height)}`;
+    const headingEl = slideHandle?.el.querySelector<HTMLElement>(
+      '.cell[data-kind="heading"] [data-align]',
+    );
+    headingDd.textContent = headingEl?.dataset["align"] ?? "—";
+    refuseDd.textContent =
+      slideHandle !== undefined && measureRefuse(slideHandle.el) ? "yes" : "no";
+  }
+
+  function repaint(): void {
+    paintStage();
+    repaintReadout();
+  }
+
+  function selectPreset(next: InspectPresetId): void {
+    preset = next;
+    writeInspectViewportToUrl(preset, freeform);
+    applyStageSize();
+    repaintReadout();
+  }
+
+  function arrive(to: string): void {
+    frame = resolveFrame(deck, { to, from: current });
+    current = to;
+    repaint();
+  }
+
+  function onKeydown(event: KeyboardEvent): void {
+    if (event.key !== "ArrowRight" && event.key !== "ArrowLeft") return;
+    const target = neighbourAddress(deck, current, event.key === "ArrowRight" ? 1 : -1);
+    if (target === undefined) return;
+    event.preventDefault();
+    arrive(target);
+  }
+
+  /** Dragging any named box selects Freeform and keeps that size (ADR 0014): the switch
+   *  happens on the first pointermove, starting from the size the box already had, so the
+   *  box never jumps before the author's drag has moved it anywhere. */
+  function onPointerDown(event: PointerEvent): void {
+    const size = inspectViewport(preset, freeform);
+    dragging = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      startW: size.width,
+      startH: size.height,
+    };
+    handle.setPointerCapture(event.pointerId);
+  }
+
+  function onPointerMove(event: PointerEvent): void {
+    if (dragging === undefined || dragging.pointerId !== event.pointerId) return;
+    const width = Math.max(100, Math.round(dragging.startW + (event.clientX - dragging.startX)));
+    const height = Math.max(100, Math.round(dragging.startH + (event.clientY - dragging.startY)));
+    freeform = { width, height };
+    preset = "freeform";
+    applyStageSize();
+    repaintReadout();
+  }
+
+  function endDrag(event: PointerEvent): void {
+    if (dragging === undefined || dragging.pointerId !== event.pointerId) return;
+    dragging = undefined;
+    writeInspectViewportToUrl(preset, freeform);
+  }
+
+  handle.addEventListener("pointerdown", onPointerDown);
+  handle.addEventListener("pointermove", onPointerMove);
+  handle.addEventListener("pointerup", endDrag);
+  handle.addEventListener("pointercancel", endDrag);
+  window.addEventListener("keydown", onKeydown);
+
+  disposeInspect = () => {
+    window.removeEventListener("keydown", onKeydown);
+    slideHandle?.dispose();
+  };
+
+  repaint();
+
+  return root as unknown as Solid.JSX.Element;
 }
 
 export function useDeck(): Solid.Accessor<Deck> {

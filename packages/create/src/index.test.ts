@@ -54,7 +54,12 @@ test("--yes writes a Cover-only empty starter with Harbour, files only", async (
     "@speechdeck/solid": expect.any(String),
     "@speechdeck/themes": expect.any(String),
   });
-  expect(pkg["scripts"]).toEqual({ dev: "vite", build: "vite build", preview: "vite preview" });
+  expect(pkg["scripts"]).toEqual({
+    dev: "vite",
+    build: "vite build",
+    preview: "vite preview",
+    inspect: "SPEECHDECK_INSPECT=1 vite",
+  });
   expect(pkg["intent"]).toEqual({ skills: ["@speechdeck/*"] });
 
   const deckSource = readFileSync(join(dir, "deck.md"), "utf8");
@@ -124,6 +129,24 @@ test("scaffolded scripts call Vite directly; there is no dev/build/present wrapp
   expect(scripts["dev"]).toBe("vite");
   expect(scripts["build"]).toBe("vite build");
   expect(scripts["present"]).toBeUndefined();
+});
+
+test("scaffolds a gated Inspect entry: pnpm inspect sets SPEECHDECK_INSPECT=1, and vite.config.ts only builds inspect.html then", async () => {
+  await init({ yes: true, directory: dir });
+
+  const pkg = readJson(join(dir, "package.json"));
+  const scripts = pkg["scripts"] as Record<string, string>;
+  expect(scripts["inspect"]).toBe("SPEECHDECK_INSPECT=1 vite");
+
+  expect(existsSync(join(dir, "inspect.html"))).toBe(true);
+  expect(existsSync(join(dir, "src", "inspect.ts"))).toBe(true);
+  const inspectEntry = readFileSync(join(dir, "src", "inspect.ts"), "utf8");
+  expect(inspectEntry).toContain("Inspect");
+  expect(inspectEntry).not.toContain("Present");
+
+  const viteConfig = readFileSync(join(dir, "vite.config.ts"), "utf8");
+  expect(viteConfig).toContain("process.env.SPEECHDECK_INSPECT");
+  expect(viteConfig).toContain('input.inspect = resolve(import.meta.dirname, "inspect.html");');
 });
 
 test("writes an AGENTS.md loading block alongside intent.skills", async () => {

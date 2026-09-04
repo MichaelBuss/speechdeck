@@ -6,6 +6,7 @@ import { codeToHtml, createCssVariablesTheme } from "shiki";
 import type { Plugin } from "vite";
 
 const DEFAULT_DECK = "deck.md";
+const INSPECT_ENTRY = "/inspect.html";
 
 /** Highlighting is not in core: Shiki runs here, at build, with a CSS-variables theme so a
  *  Theme package paints tokens rather than Shiki baking in fixed colours. */
@@ -63,6 +64,21 @@ export function speechdeck(options: { deck?: string } = {}): Plugin {
     name: "speechdeck",
     configResolved(config) {
       root = config.root;
+    },
+    /** Inspect is gated (ADR 0014): the dev server otherwise serves inspect.html like any
+     *  other static file, so a default `vite dev` must 404 it. The gate reads the same
+     *  process env var `pnpm inspect` sets — there is no plugin `inspect: true` option,
+     *  which would bake the gate open in config instead. */
+    configureServer(server) {
+      if (process.env["SPEECHDECK_INSPECT"] === "1") return;
+      server.middlewares.use((req, res, next) => {
+        if (req.url?.split("?")[0] === INSPECT_ENTRY) {
+          res.statusCode = 404;
+          res.end("Not found");
+          return;
+        }
+        next();
+      });
     },
     async transform(code, id) {
       const target = resolvePath(root, deckOption);
