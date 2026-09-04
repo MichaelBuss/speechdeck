@@ -132,6 +132,7 @@ function packageJsonFile(name: string): ScaffoldFile {
       "solid-js": SOLID_VERSION,
     },
     devDependencies: {
+      "@speechdeck/vite": SPEECHDECK_VERSION,
       vite: VITE_VERSION,
       typescript: TYPESCRIPT_VERSION,
     },
@@ -145,7 +146,8 @@ function packageJsonFile(name: string): ScaffoldFile {
 function viteConfigFile(): ScaffoldFile {
   return {
     path: "vite.config.ts",
-    content: `import { resolve } from "node:path";
+    content: `import { speechdeck } from "@speechdeck/vite";
+import { resolve } from "node:path";
 import { defineConfig } from "vite";
 
 // Inspect is gated (ADR 0014): \`pnpm inspect\` sets SPEECHDECK_INSPECT=1, so only that
@@ -160,6 +162,9 @@ if (process.env.SPEECHDECK_INSPECT === "1") {
 }
 
 export default defineConfig({
+  // parseDeck and Shiki run here, at build time (ADR 0017/0018) — deck.md is transformed
+  // into a plain data module, so neither lands in the client bundle.
+  plugins: [speechdeck()],
   build: {
     rollupOptions: {
       input,
@@ -190,7 +195,20 @@ function htmlFile(path: string, title: string, entry: string): ScaffoldFile {
 }
 
 function viteEnvFile(): ScaffoldFile {
-  return { path: "src/vite-env.d.ts", content: `/// <reference types="vite/client" />\n` };
+  return {
+    path: "src/vite-env.d.ts",
+    content: `/// <reference types="vite/client" />
+
+// @speechdeck/vite transforms deck.md into this shape at build time (ADR 0017/0018);
+// parseDeck and Shiki never run in the client's module graph.
+declare module "*.md" {
+  import type { Deck, Diagnostic } from "@speechdeck/core";
+
+  export const deck: Deck;
+  export const diagnostics: readonly Diagnostic[];
+}
+`,
+  };
 }
 
 function tsconfigFile(): ScaffoldFile {
@@ -212,28 +230,12 @@ function tsconfigFile(): ScaffoldFile {
   return { path: "tsconfig.json", content: `${JSON.stringify(json, null, 2)}\n` };
 }
 
-function deckModuleFile(theme: string, starter: Starter): ScaffoldFile {
-  const demoImport =
-    starter === "skeleton" ? `import counterSource from "../demos/counter.ts?raw";\n` : "";
-  const demoRead =
-    starter === "skeleton"
-      ? `    if (relative === "./demos/counter.ts") return counterSource;\n`
-      : "";
+function deckModuleFile(): ScaffoldFile {
   return {
     path: "src/deck.ts",
-    content: `import { parseDeck, type FileMap } from "@speechdeck/core";
-import deckSource from "../deck.md?raw";
-import themeJson from "${theme}/theme.json?raw";
-${demoImport}
-const files: FileMap = {
-  read(relative) {
-    if (relative === "${theme}/theme.json") return themeJson;
-${demoRead}    throw new Error(\`Cannot resolve "\${relative}"\`);
-  },
-};
-
-export const { deck } = parseDeck(deckSource, files);
-`,
+    // The @speechdeck/vite plugin transforms deck.md at build time (ADR 0017/0018): this
+    // re-export is the only place parseDeck's output touches client code.
+    content: `export { deck, diagnostics } from "../deck.md";\n`,
   };
 }
 
@@ -386,7 +388,7 @@ function scaffoldFiles(resolved: Resolved): readonly ScaffoldFile[] {
     htmlFile("rehearse.html", "My Talk — Rehearse", "src/rehearse.ts"),
     htmlFile("inspect.html", "My Talk — Inspect", "src/inspect.ts"),
     viteEnvFile(),
-    deckModuleFile(resolved.theme, resolved.starter),
+    deckModuleFile(),
     mainFile(resolved.starter),
     rehearseFile(resolved.starter),
     inspectFile(resolved.starter),
