@@ -163,6 +163,93 @@ test("Present, opened as the audience window, paints a background title as a ful
   expect(backdrop.getAttribute("data-look")).toBe("dim");
 });
 
+test("Present, opened as the audience window, sets color-scheme from Appearance: light and dark ignore the environment, auto leaves both", () => {
+  becomeAudienceWindow();
+  window.history.replaceState(null, "", "/1");
+
+  const dark = deckFor("---\ntheme: @speechdeck/themes/harbour\n---\n# One\n");
+  const darkEl = Present({ deck: dark }) as unknown as HTMLElement;
+  expect(darkEl.style.getPropertyValue("color-scheme")).toBe("dark");
+
+  const light = deckFor("---\ntheme: @speechdeck/themes/harbour\nappearance: light\n---\n# One\n");
+  const lightEl = Present({ deck: light }) as unknown as HTMLElement;
+  expect(lightEl.style.getPropertyValue("color-scheme")).toBe("light");
+
+  const auto = deckFor("---\ntheme: @speechdeck/themes/harbour\nappearance: auto\n---\n# One\n");
+  const autoEl = Present({ deck: auto }) as unknown as HTMLElement;
+  expect(autoEl.style.getPropertyValue("color-scheme")).toBe("light dark");
+});
+
+test("Present, opened as the audience window, advances Harbour's stops one per participating Slide and blends between them in oklab", () => {
+  becomeAudienceWindow();
+  window.history.replaceState(null, "", "/1");
+  const deck = deckFor(
+    "---\ntheme: @speechdeck/themes/harbour\n---\n# One\n---\n## Two\n---\n## Three\n---\n## Four\n",
+  );
+  const stops = deck.tokens.stops as readonly string[];
+  expect(stops).toHaveLength(4);
+
+  const el = Present({ deck }) as unknown as HTMLElement;
+  expect(el.style.getPropertyValue("--sd-bg")).toBe(stops[0]);
+
+  window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight" }));
+  expect(el.style.getPropertyValue("--sd-bg")).toBe(stops[1]);
+
+  window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight" }));
+  expect(el.style.getPropertyValue("--sd-bg")).toBe(stops[2]);
+
+  window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight" }));
+  expect(el.style.getPropertyValue("--sd-bg")).toBe(stops[3]);
+});
+
+test("Present, opened as the audience window, blends between adjacent stops in oklab when travel lands between them", () => {
+  becomeAudienceWindow();
+  window.history.replaceState(null, "", "/1");
+  const deck = deckFor(
+    "---\ntheme: @speechdeck/themes/harbour\n---\n# One\n---\n## Two\n---\n## Three\n",
+  );
+  const stops = deck.tokens.stops as readonly string[];
+
+  const el = Present({ deck }) as unknown as HTMLElement;
+  window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight" })); // t = 0.5
+  const bg = el.style.getPropertyValue("--sd-bg");
+  expect(bg).toContain("color-mix(in oklab");
+  expect(bg).toContain(stops[1]);
+  expect(bg).toContain(stops[2]);
+});
+
+test("Present, opened as the audience window, keeps Ink still: --sd-bg does not change across Slides", () => {
+  becomeAudienceWindow();
+  window.history.replaceState(null, "", "/1");
+  const deck = deckFor(
+    "---\ntheme: @speechdeck/themes/ink\n---\n# One\n---\n## Two\n---\n## Three\n",
+  );
+  expect(deck.tokens.stops).toBeUndefined();
+
+  const el = Present({ deck }) as unknown as HTMLElement;
+  const first = el.style.getPropertyValue("--sd-bg");
+
+  window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight" }));
+  expect(el.style.getPropertyValue("--sd-bg")).toBe(first);
+
+  window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight" }));
+  expect(el.style.getPropertyValue("--sd-bg")).toBe(first);
+});
+
+test("Present, opened as the audience window, keeps Signal's stops outside sRGB (display-p3) as travel advances", () => {
+  becomeAudienceWindow();
+  window.history.replaceState(null, "", "/1");
+  const deck = deckFor("---\ntheme: @speechdeck/themes/signal\n---\n# One\n---\n## Two\n");
+  const stops = deck.tokens.stops as readonly string[];
+  expect(stops.every((stop) => stop.includes("display-p3"))).toBe(true);
+
+  const el = Present({ deck }) as unknown as HTMLElement;
+  expect(el.style.getPropertyValue("--sd-bg")).toBe(stops[0]);
+
+  window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight" }));
+  expect(el.style.getPropertyValue("--sd-bg")).toBe(stops[stops.length - 1]);
+});
+
 test("Present, opened as the audience window, orders a Caption's media before its H4 text regardless of source order", () => {
   becomeAudienceWindow();
   window.history.replaceState(null, "", "/");

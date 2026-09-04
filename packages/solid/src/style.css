@@ -3,11 +3,21 @@
  * Theme's tokens set (see ADR 0004, ADR 0010). Public DOM: mark[data-mark]. */
 
 /* Layout: the arrangement never changes with the viewport (resolveFrame takes no
- * viewport); only this container-query reflow does, keyed off `.slide`'s own size. */
+ * viewport); only this container-query reflow does, keyed off `.slide`'s own size.
+ * --sd-bg is the travelling paint (ADR 0004): a still Theme (Ink) has no stops, so
+ * it resolves to "transparent" and this rule is a no-op, letting the page show through. */
 .slide {
   position: relative;
   container-type: size;
   container-name: slide;
+  background: var(--sd-bg);
+  color: var(--sd-fg);
+  font-family: var(--sd-font-body);
+}
+
+.cell[data-kind="heading"] :is(h1, h2, h3, h4, h5, h6) {
+  color: var(--sd-title);
+  font-family: var(--sd-font-title);
 }
 
 /* The Background: full-bleed behind `.cells`, not a Cell, so it never bumps a Layout
