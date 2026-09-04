@@ -61,6 +61,81 @@ test("parseDeck: an unresolvable theme.json does not yield a Deck", () => {
   expect(() => parseDeck(source, files)).toThrow();
 });
 
+test("parseDeck: a --- starts a new Slide; extra blank lines do not", () => {
+  const source = [
+    "---",
+    "theme: @speechdeck/themes/harbour",
+    "---",
+    "## First",
+    "",
+    "",
+    "Speech under first.",
+    "",
+    "",
+    "",
+    "---",
+    "## Second",
+    "",
+  ].join("\n");
+  const { deck } = parseDeck(source, files);
+
+  expect(deck.slides).toHaveLength(2);
+  expect(deck.slides[0]?.cells).toHaveLength(1);
+  expect(deck.slides[0]?.speech.blocks).toHaveLength(1);
+  expect(deck.slides[1]?.cells).toHaveLength(1);
+});
+
+test("parseDeck: untagged prose is Speech, not a Cell on the Slide", () => {
+  const source =
+    "---\ntheme: @speechdeck/themes/harbour\n---\n## Heading\n\nThis is spoken only.\n";
+  const { deck } = parseDeck(source, files);
+  const slide = deck.slides[0];
+
+  expect(slide?.cells).toHaveLength(1);
+  expect(slide?.cells[0]?.blocks[0]?.kind).toBe("heading");
+  expect(slide?.speech.blocks).toHaveLength(1);
+  expect(slide?.speech.blocks[0]?.kind).toBe("paragraph");
+  expect(slide?.speech.blocks[0]?.html).toContain("This is spoken only.");
+});
+
+test("parseDeck: one heading-only Cell at H2+ auto-picks Section", () => {
+  const source = "---\ntheme: @speechdeck/themes/harbour\n---\n## Section heading\n";
+  const { deck } = parseDeck(source, files);
+  const frame = resolveFrame(deck, { to: "1" });
+
+  expect(frame.layout).toBe("section");
+  expect(frame.layoutAuto).toBe("section");
+});
+
+test("resolveFrame: first paint, a deep link, and a skip are hard cuts", () => {
+  const source =
+    "---\ntheme: @speechdeck/themes/harbour\n---\n# One\n---\n## Two\n---\nenter: connected\n## Three\n";
+  const { deck } = parseDeck(source, files);
+
+  const firstPaint = resolveFrame(deck, { to: "1" });
+  expect(firstPaint.enter).toBe("cut");
+
+  const deepLink = resolveFrame(deck, { to: "3" });
+  expect(deepLink.enter).toBe("cut");
+
+  const skip = resolveFrame(deck, { to: "3", from: "1" });
+  expect(skip.enter).toBe("cut");
+
+  const sequential = resolveFrame(deck, { to: "3", from: "2" });
+  expect(sequential.enter).toBe("connected");
+});
+
+test("parseDeck: two Slides may share a heading; they do not share an address", () => {
+  const source = "---\ntheme: @speechdeck/themes/harbour\n---\n## Same\n---\n## Same\n";
+  const { deck } = parseDeck(source, files);
+
+  expect(deck.slides).toHaveLength(2);
+  expect(deck.slides[0]?.id).toBe("1");
+  expect(deck.slides[1]?.id).toBe("2");
+  expect(deck.slides[0]?.cells[0]?.blocks[0]).toMatchObject({ kind: "heading", text: "Same" });
+  expect(deck.slides[1]?.cells[0]?.blocks[0]).toMatchObject({ kind: "heading", text: "Same" });
+});
+
 test("matchCode is not implemented", () => {
   const block = {
     kind: "code" as const,

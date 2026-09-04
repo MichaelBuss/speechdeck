@@ -1,6 +1,7 @@
 import {
   resolveFrame,
   type Appearance,
+  type Arrival,
   type Cell,
   type Deck,
   type Frame,
@@ -87,10 +88,23 @@ function renderCell(cell: Cell): HTMLElement {
   return cellEl;
 }
 
-function renderFrame(frame: Frame, tokens: ThemeTokens, appearance: Appearance): HTMLElement {
-  const slideEl = document.createElement("div");
-  slideEl.className = "slide";
+function slideLabel(slide: SlideDoc): string {
+  for (const cell of slide.cells) {
+    const block = cell.blocks[0];
+    if (cell.blocks.length === 1 && block?.kind === "heading") return block.text;
+  }
+  return `Slide ${slide.id}`;
+}
+
+function paintFrame(
+  slideEl: HTMLElement,
+  frame: Frame,
+  tokens: ThemeTokens,
+  appearance: Appearance,
+): void {
   slideEl.dataset["layout"] = frame.layout;
+  slideEl.dataset["enter"] = frame.enter;
+  slideEl.setAttribute("aria-label", slideLabel(frame.slide));
   paintSlide(slideEl, tokens, appearance, frame.t);
 
   const cellsEl = document.createElement("div");
@@ -100,13 +114,62 @@ function renderFrame(frame: Frame, tokens: ThemeTokens, appearance: Appearance):
   for (const cell of frame.slide.cells) {
     cellsEl.appendChild(renderCell(cell));
   }
-  slideEl.appendChild(cellsEl);
+  slideEl.replaceChildren(cellsEl);
+
+  if (typeof document !== "undefined") {
+    document.title = `${frame.slide.id} · ${slideLabel(frame.slide)}`;
+  }
+}
+
+function renderFrame(frame: Frame, tokens: ThemeTokens, appearance: Appearance): HTMLElement {
+  const slideEl = document.createElement("main");
+  slideEl.className = "slide";
+  paintFrame(slideEl, frame, tokens, appearance);
   return slideEl;
 }
 
+let disposePresent: (() => void) | undefined;
+
 export function Present(props: { deck: Deck }): Solid.JSX.Element {
-  const frame = resolveFrame(props.deck, { to: currentAddress() });
+  disposePresent?.();
+
+  let current = currentAddress();
+  const frame = resolveFrame(props.deck, { to: current });
   const el = renderFrame(frame, props.deck.tokens, props.deck.appearance);
+
+  function arrive(to: string): void {
+    const arrival: Arrival = { to, from: current };
+    const next = resolveFrame(props.deck, arrival);
+    paintFrame(el, next, props.deck.tokens, props.deck.appearance);
+    current = to;
+  }
+
+  function go(to: string): void {
+    if (to === current) return;
+    window.history.pushState(null, "", `/${to}`);
+    arrive(to);
+  }
+
+  function onKeydown(event: KeyboardEvent): void {
+    if (event.key !== "ArrowRight" && event.key !== "ArrowLeft") return;
+    const index = props.deck.slides.findIndex((s) => s.id === current);
+    const target = props.deck.slides[index + (event.key === "ArrowRight" ? 1 : -1)];
+    if (target === undefined) return;
+    event.preventDefault();
+    go(target.id);
+  }
+
+  function onPopstate(): void {
+    arrive(currentAddress());
+  }
+
+  window.addEventListener("keydown", onKeydown);
+  window.addEventListener("popstate", onPopstate);
+  disposePresent = () => {
+    window.removeEventListener("keydown", onKeydown);
+    window.removeEventListener("popstate", onPopstate);
+  };
+
   return el as unknown as Solid.JSX.Element;
 }
 
