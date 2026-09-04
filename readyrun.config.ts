@@ -5,10 +5,11 @@ export default defineConfig({
     repo: "MichaelBuss/speechdeck",
     ready: "unblocked",
     labels: ["ready-for-agent"],
+    account: "MichaelBuss",
   }),
   worker: claude(),
   model: "sonnet",
+  permissions: "unattended",
   effort: "high",
   contextFile: "CONTEXT.md",
-  permissions: "unattended",
 });
