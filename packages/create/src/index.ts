@@ -212,17 +212,23 @@ function tsconfigFile(): ScaffoldFile {
   return { path: "tsconfig.json", content: `${JSON.stringify(json, null, 2)}\n` };
 }
 
-function deckModuleFile(theme: string): ScaffoldFile {
+function deckModuleFile(theme: string, starter: Starter): ScaffoldFile {
+  const demoImport =
+    starter === "skeleton" ? `import counterSource from "../demos/counter.ts?raw";\n` : "";
+  const demoRead =
+    starter === "skeleton"
+      ? `    if (relative === "./demos/counter.ts") return counterSource;\n`
+      : "";
   return {
     path: "src/deck.ts",
     content: `import { parseDeck, type FileMap } from "@speechdeck/core";
 import deckSource from "../deck.md?raw";
 import themeJson from "${theme}/theme.json?raw";
-
+${demoImport}
 const files: FileMap = {
   read(relative) {
     if (relative === "${theme}/theme.json") return themeJson;
-    throw new Error(\`Cannot resolve "\${relative}"\`);
+${demoRead}    throw new Error(\`Cannot resolve "\${relative}"\`);
   },
 };
 
@@ -231,44 +237,102 @@ export const { deck } = parseDeck(deckSource, files);
   };
 }
 
-function mainFile(): ScaffoldFile {
+function loadEmbedFile(): ScaffoldFile {
+  return {
+    path: "load-embed.ts",
+    content: `import type { EmbedGuest } from "@speechdeck/core";
+import type { LoadEmbed } from "@speechdeck/solid";
+
+// A specifier resolves relative to the Deck (ADR 0006); this module lives beside deck.md
+// so the dynamic import below needs no path rewriting to land on the same file.
+export const loadEmbed: LoadEmbed = async (specifier) => {
+  const mod = (await import(/* @vite-ignore */ specifier)) as {
+    default?: EmbedGuest<HTMLElement>;
+  };
+  if (typeof mod.default !== "function") {
+    throw new Error(\`Embed "\${specifier}" has no default export guest.\`);
+  }
+  return mod.default;
+};
+`,
+  };
+}
+
+function demoCounterFile(): ScaffoldFile {
+  return {
+    path: "demos/counter.ts",
+    content: `import type { EmbedGuest } from "@speechdeck/core";
+
+const counter: EmbedGuest<HTMLElement> = (el) => {
+  let count = 0;
+  const button = document.createElement("button");
+  const render = () => {
+    button.textContent = \`Clicked \${count} time\${count === 1 ? "" : "s"}\`;
+  };
+  render();
+  button.addEventListener("click", () => {
+    count++;
+    render();
+  });
+  el.replaceChildren(button);
+
+  return {
+    dispose: () => el.replaceChildren(),
+    ready: Promise.resolve(),
+  };
+};
+
+export default counter;
+`,
+  };
+}
+
+function loadEmbedImport(starter: Starter): string {
+  return starter === "skeleton" ? `import { loadEmbed } from "../load-embed.ts";\n` : "";
+}
+
+function compositionArgs(starter: Starter): string {
+  return starter === "skeleton" ? "{ deck, loadEmbed }" : "{ deck }";
+}
+
+function mainFile(starter: Starter): ScaffoldFile {
   return {
     path: "src/main.ts",
     content: `import "@speechdeck/solid/style.css";
 import { Present } from "@speechdeck/solid";
 import { deck } from "./deck.ts";
-
+${loadEmbedImport(starter)}
 const app = document.querySelector<HTMLDivElement>("#app");
 if (app === null) throw new Error("Missing #app element");
-app.replaceChildren(Present({ deck }) as unknown as Node);
+app.replaceChildren(Present(${compositionArgs(starter)}) as unknown as Node);
 `,
   };
 }
 
-function rehearseFile(): ScaffoldFile {
+function rehearseFile(starter: Starter): ScaffoldFile {
   return {
     path: "src/rehearse.ts",
     content: `import "@speechdeck/solid/style.css";
 import { Rehearse } from "@speechdeck/solid";
 import { deck } from "./deck.ts";
-
+${loadEmbedImport(starter)}
 const app = document.querySelector<HTMLDivElement>("#app");
 if (app === null) throw new Error("Missing #app element");
-app.replaceChildren(Rehearse({ deck }) as unknown as Node);
+app.replaceChildren(Rehearse(${compositionArgs(starter)}) as unknown as Node);
 `,
   };
 }
 
-function inspectFile(): ScaffoldFile {
+function inspectFile(starter: Starter): ScaffoldFile {
   return {
     path: "src/inspect.ts",
     content: `import "@speechdeck/solid/style.css";
 import { Inspect } from "@speechdeck/solid";
 import { deck } from "./deck.ts";
-
+${loadEmbedImport(starter)}
 const app = document.querySelector<HTMLDivElement>("#app");
 if (app === null) throw new Error("Missing #app element");
-app.replaceChildren(Inspect({ deck }) as unknown as Node);
+app.replaceChildren(Inspect(${compositionArgs(starter)}) as unknown as Node);
 `,
   };
 }
@@ -277,10 +341,14 @@ function deckMarkdownFile(theme: string, starter: Starter): ScaffoldFile {
   const cover = `# My Talk
 
 This is your Speech — it stays with you. The audience only sees the heading above.`;
-  const section = `## Thanks for listening
+  const embedSlide = `Click the button — its code is the same file next to this Deck, not a copy.
 
-Say something here before you take questions.`;
-  const body = starter === "skeleton" ? `${cover}\n\n---\n\n${section}` : cover;
+\`\`\`embed ./demos/counter.ts
+\`\`\`
+
+\`\`\`ts ./demos/counter.ts
+\`\`\``;
+  const body = starter === "skeleton" ? `${cover}\n\n---\n\n${embedSlide}` : cover;
   return {
     path: "deck.md",
     content: `---
@@ -310,7 +378,7 @@ function gitignoreFile(): ScaffoldFile {
 }
 
 function scaffoldFiles(resolved: Resolved): readonly ScaffoldFile[] {
-  return [
+  const files: ScaffoldFile[] = [
     packageJsonFile(projectName(resolved.directory)),
     viteConfigFile(),
     tsconfigFile(),
@@ -318,14 +386,16 @@ function scaffoldFiles(resolved: Resolved): readonly ScaffoldFile[] {
     htmlFile("rehearse.html", "My Talk — Rehearse", "src/rehearse.ts"),
     htmlFile("inspect.html", "My Talk — Inspect", "src/inspect.ts"),
     viteEnvFile(),
-    deckModuleFile(resolved.theme),
-    mainFile(),
-    rehearseFile(),
-    inspectFile(),
+    deckModuleFile(resolved.theme, resolved.starter),
+    mainFile(resolved.starter),
+    rehearseFile(resolved.starter),
+    inspectFile(resolved.starter),
     deckMarkdownFile(resolved.theme, resolved.starter),
     agentsFile(),
     gitignoreFile(),
   ];
+  if (resolved.starter === "skeleton") files.push(loadEmbedFile(), demoCounterFile());
+  return files;
 }
 
 function assertWritable(dir: string, existing: Existing): void {
