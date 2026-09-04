@@ -11,4 +11,4 @@ peerDependencyRules:
     typescript: "7"
 
 minimumReleaseAgeExclude:
-  - '@jsr/readyrun__readyrun@0.1.0 || 0.1.1 || 0.1.3 || 0.1.5'
+  - "@jsr/readyrun__readyrun@0.1.0 || 0.1.1 || 0.1.3 || 0.1.5"
