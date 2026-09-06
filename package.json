@@ -10,6 +10,7 @@
     "test": "vitest run",
     "check": "pnpm typecheck && pnpm lint && pnpm fmt:check && pnpm test",
     "publish:jsr": "node scripts/publish-jsr.mjs",
+    "bump": "node scripts/bump.ts",
     "readyrun": "node scripts/readyrun.mjs"
   },
   "dependencies": {
