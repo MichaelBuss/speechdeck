@@ -8,11 +8,6 @@
     "./signal/theme.json": "./signal/theme.json"
   },
   "publish": {
-    "include": [
-      "LICENSE",
-      "harbour/theme.json",
-      "ink/theme.json",
-      "signal/theme.json"
-    ]
+    "include": ["LICENSE", "harbour/theme.json", "ink/theme.json", "signal/theme.json"]
   }
 }

@@ -9,6 +9,7 @@ import {
   higherVersion,
   nextVersion,
   parseBumpSpec,
+  replaceVersion,
 } from "./bump.ts";
 import { jsrPackages } from "./jsr-packages.ts";
 
@@ -60,6 +61,25 @@ test("parseBumpSpec defaults to patch and accepts flags or an exact version", ()
   expect(parseBumpSpec(["0.2.0"])).toBe("0.2.0");
   expect(() => parseBumpSpec(["patch", "minor"])).toThrow(BumpError);
   expect(() => parseBumpSpec(["--help"])).toThrow(BumpError);
+});
+
+test("replaceVersion rewrites only the version field, leaving the rest of the file alone", () => {
+  const source = `{
+  "name": "@speechdeck/core",
+  "version": "0.0.0",
+  "publish": {
+    "include": ["LICENSE", "src/**/*.ts"]
+  }
+}
+`;
+  expect(replaceVersion(source, "0.0.0", "0.0.1")).toBe(`{
+  "name": "@speechdeck/core",
+  "version": "0.0.1",
+  "publish": {
+    "include": ["LICENSE", "src/**/*.ts"]
+  }
+}
+`);
 });
 
 test("bump writes the same version to every package.json and jsr.json", async () => {

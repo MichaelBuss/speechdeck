@@ -92,8 +92,16 @@ async function readJson<T>(path: string): Promise<T> {
   return JSON.parse(await readFile(path, "utf8")) as T;
 }
 
-async function writeJson(path: string, value: unknown): Promise<void> {
-  await writeFile(path, `${JSON.stringify(value, null, 2)}\n`);
+export function replaceVersion(source: string, from: string, to: string): string {
+  const needle = `"version": "${from}"`;
+  const next = `"version": "${to}"`;
+  const matches = source.split(needle).length - 1;
+  if (matches !== 1) {
+    throw new BumpError(
+      `Expected exactly one ${needle} in a manifest, found ${matches}; fix that first.`,
+    );
+  }
+  return source.replace(needle, next);
 }
 
 export async function bump(
@@ -134,10 +142,8 @@ export async function bump(
   const base = baseline === undefined ? from : higherVersion(from, baseline);
   const to = nextVersion(base, spec);
   for (const item of manifests) {
-    item.pkg.version = to;
-    item.jsr.version = to;
-    await writeJson(item.pkgPath, item.pkg);
-    await writeJson(item.jsrPath, item.jsr);
+    await writeFile(item.pkgPath, replaceVersion(await readFile(item.pkgPath, "utf8"), from, to));
+    await writeFile(item.jsrPath, replaceVersion(await readFile(item.jsrPath, "utf8"), from, to));
   }
   return { from, to };
 }
