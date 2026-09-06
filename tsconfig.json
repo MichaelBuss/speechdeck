@@ -12,7 +12,8 @@
     "noUncheckedIndexedAccess": true,
     "exactOptionalPropertyTypes": true,
     "skipLibCheck": true,
-    "allowImportingTsExtensions": true
+    "allowImportingTsExtensions": true,
+    "types": ["node"]
   },
   "include": ["packages/*/src/**/*.ts"],
   "exclude": ["packages/*/src/**/*.test.ts"]

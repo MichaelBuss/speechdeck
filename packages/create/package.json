@@ -8,5 +8,17 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@clack/prompts": "^1.7.0"
+  },
+  "devDependencies": {
+    "@speechdeck/core": "workspace:*",
+    "@speechdeck/solid": "workspace:*",
+    "@speechdeck/themes": "workspace:*",
+    "@speechdeck/vite": "workspace:*",
+    "@types/node": "^26.3.0",
+    "solid-js": "^1.9.15",
+    "vite": "^8.2.2"
   }
 }

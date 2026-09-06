@@ -189,8 +189,62 @@ function soleHeading(cell: Cell): HeadingBlock | undefined {
   return cell.blocks.length === 1 && block?.kind === "heading" ? block : undefined;
 }
 
+function soleImage(cell: Cell): ImageBlock | undefined {
+  const block = cell.blocks[0];
+  return cell.blocks.length === 1 && block?.kind === "image" ? block : undefined;
+}
+
 function hasImage(cell: Cell): boolean {
   return cell.blocks.some((block) => block.kind === "image");
+}
+
+/** FNV-1a: deterministic and dependency-free, so the same heading text or image src
+ *  always mints the same view-transition-name — on either side of a connected edge,
+ *  in any Deck. */
+function fnv1a32(input: string): string {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < input.length; i++) {
+    hash ^= input.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(36);
+}
+
+/** A view-transition-name is a CSS custom-ident: raw heading text or an image src
+ *  cannot serve directly, so identity is hashed into one instead of slugged (a slug
+ *  can collide across different identities; a hash of the full identity does not). */
+function mintName(kind: "heading" | "figure" | "code", identity: string): string {
+  const prefix = kind === "heading" ? "h" : kind === "figure" ? "f" : "c";
+  return `sd-${prefix}-${fnv1a32(identity)}`;
+}
+
+/** Duplicate identity fail the build (ADR 0005): the runtime never suffixes a name,
+ *  so two headings with the same text, or two images with the same src, on one Slide
+ *  could not both keep it. */
+function assertUniqueIdentities(cells: readonly Cell[], slideId: string): void {
+  const headingTexts = new Set<string>();
+  const imageSrcs = new Set<string>();
+  for (const cell of cells) {
+    const heading = soleHeading(cell);
+    if (heading !== undefined) {
+      if (headingTexts.has(heading.text)) {
+        throw new Error(
+          `Slide ${slideId} has two headings with the text "${heading.text}"; identity names cannot repeat within a Slide.`,
+        );
+      }
+      headingTexts.add(heading.text);
+      continue;
+    }
+    const image = soleImage(cell);
+    if (image !== undefined) {
+      if (imageSrcs.has(image.src)) {
+        throw new Error(
+          `Slide ${slideId} has two images with the src "${image.src}"; identity names cannot repeat within a Slide.`,
+        );
+      }
+      imageSrcs.add(image.src);
+    }
+  }
 }
 
 function isH4Only(cell: Cell): boolean {
@@ -300,58 +354,477 @@ function splitSlideSources(bodyLines: readonly string[]): SlideSource[] {
   });
 }
 
-function groupParagraphs(lines: readonly string[]): string[][] {
-  const groups: string[][] = [];
-  let current: string[] = [];
-  for (const line of lines) {
-    if (line.trim() === "") {
-      if (current.length > 0) {
-        groups.push(current);
-        current = [];
-      }
-    } else {
-      current.push(line);
+/** Any HTML comment other than the exact `<!--on-->` line is a Comment: dropped before
+ *  grouping so it never opens a Cell boundary and never surfaces in Speech or a Cell. */
+type LogicalLine = { text: string } | { promote: true };
+
+function preprocessLines(bodyLines: readonly string[]): LogicalLine[] {
+  const out: LogicalLine[] = [];
+  for (const raw of bodyLines) {
+    if (raw.trim() === "<!--on-->") {
+      out.push({ promote: true });
+      continue;
     }
+    const stripped = raw.replace(/<!--[\s\S]*?-->/g, "");
+    if (raw.trim() !== "" && stripped.trim() === "") continue;
+    out.push({ text: stripped });
   }
-  if (current.length > 0) groups.push(current);
+  return out;
+}
+
+type RawGroup = { lines: string[]; promoted: boolean };
+
+/** A blank line starts a new Cell; a dangling `<!--on-->` with no adjacent block is a no-op. */
+function groupLogicalLines(entries: readonly LogicalLine[]): RawGroup[] {
+  const groups: RawGroup[] = [];
+  let current: string[] = [];
+  let currentPromoted = false;
+  let pendingPromote = false;
+  for (const entry of entries) {
+    if ("promote" in entry) {
+      pendingPromote = true;
+      continue;
+    }
+    if (entry.text.trim() === "") {
+      if (current.length > 0) {
+        groups.push({ lines: current, promoted: currentPromoted });
+        current = [];
+        currentPromoted = false;
+      }
+      pendingPromote = false;
+      continue;
+    }
+    if (current.length === 0) currentPromoted = pendingPromote;
+    pendingPromote = false;
+    current.push(entry.text);
+  }
+  if (current.length > 0) groups.push({ lines: current, promoted: currentPromoted });
   return groups;
 }
 
-const HEADING_RE = /^(#{1,6})\s+(.+?)\s*$/;
+const FIT_VALUES: readonly Fit[] = ["contain", "crop"];
+const FOCUS_VALUES: readonly Focus[] = [
+  "top-left",
+  "top",
+  "top-right",
+  "left",
+  "center",
+  "right",
+  "bottom-left",
+  "bottom",
+  "bottom-right",
+];
+const LOOK_VALUES: readonly Look[] = ["dim", "blur"];
+const IMAGE_RE = /^!\[([^\]]*)\]\(\s*(\S+?)(?:\s+"([^"]*)")?\s*\)$/;
 
-function parseBody(bodyLines: readonly string[]): { cells: Cell[]; speech: Speech } {
-  const cells: Cell[] = [];
-  const speechBlocks: SpeechBlock[] = [];
-  for (const paragraph of groupParagraphs(bodyLines)) {
-    const first = paragraph[0] ?? "";
-    const heading = HEADING_RE.exec(first);
-    const depth = heading?.[1]?.length;
-    const text = heading?.[2];
-    if (depth !== undefined && text !== undefined) {
-      cells.push({
-        blocks: [
-          {
-            kind: "heading",
-            depth: depth as 1 | 2 | 3 | 4 | 5 | 6,
-            text: text.trim(),
-            html: escapeHtml(text.trim()),
-          },
-        ],
-      });
+function parseImageLine(line: string): { alt: string; src: string; title: string } | undefined {
+  const match = IMAGE_RE.exec(line.trim());
+  const src = match?.[2];
+  if (src === undefined) return undefined;
+  return { alt: match?.[1] ?? "", src, title: match?.[3] ?? "" };
+}
+
+/** Tokens are order-sensitive but each optional: background, then contain|crop, then a
+ *  Focus, then any Looks. A token that does not match its position falls through to the
+ *  Looks check, so an out-of-order or unknown token is flagged rather than silently moving
+ *  a later slot earlier. */
+function parseImageTitle(
+  title: string,
+  slideId: string,
+  diagnostics: Diagnostic[],
+): { background: boolean; fit: Fit; focus: Focus; looks: Look[] } {
+  const tokens = title.split(/\s+/).filter((token) => token.length > 0);
+  let i = 0;
+
+  const background = tokens[i] === "background";
+  if (background) i++;
+
+  let fit: Fit | undefined;
+  const fitToken = tokens[i];
+  if (fitToken !== undefined && (FIT_VALUES as readonly string[]).includes(fitToken)) {
+    fit = fitToken as Fit;
+    i++;
+  }
+
+  let focus: Focus = "center";
+  const focusToken = tokens[i];
+  if (focusToken !== undefined && (FOCUS_VALUES as readonly string[]).includes(focusToken)) {
+    focus = focusToken as Focus;
+    i++;
+  }
+
+  const looks: Look[] = [];
+  for (; i < tokens.length; i++) {
+    const token = tokens[i];
+    if (token === undefined) continue;
+    if ((LOOK_VALUES as readonly string[]).includes(token)) {
+      looks.push(token as Look);
     } else {
-      const text2 = paragraph.join(" ").trim();
-      if (text2 !== "") {
-        speechBlocks.push({ kind: "paragraph", html: `<p>${escapeHtml(text2)}</p>` });
-      }
+      diagnostics.push({
+        kind: "unknown-image-token",
+        slide: slideId,
+        message: `Unrecognized image title token "${token}".`,
+      });
     }
   }
-  return { cells, speech: { blocks: speechBlocks } };
+
+  return { background, fit: fit ?? (background ? "crop" : "contain"), focus, looks };
+}
+
+const HEADING_RE = /^(#{1,6})\s+(.+?)\s*$/;
+const LIST_ITEM_RE = /^\s*(?:[-*+]|\d+\.)\s+(.*)$/;
+const ORDERED_ITEM_RE = /^\s*\d+\.\s+/;
+const QUOTE_LINE_RE = /^\s*>\s?(.*)$/;
+const TABLE_SEPARATOR_RE = /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/;
+const MARK_RE = /<mark(?: data-mark="([a-z-]+)")?>([\s\S]*?)<\/mark>/g;
+const MARK_TYPES = new Set(["underline", "circle", "highlight", "box", "strike-through"]);
+
+/** Preserves valid `<mark>` / `<mark data-mark="...">` spans verbatim; everything else,
+ *  including an unrecognized data-mark value, is escaped as plain text. */
+function inlineHtml(text: string): string {
+  let result = "";
+  let lastIndex = 0;
+  for (const match of text.matchAll(MARK_RE)) {
+    const type = match[1];
+    if (type !== undefined && !MARK_TYPES.has(type)) continue;
+    const start = match.index;
+    result += escapeHtml(text.slice(lastIndex, start));
+    const openTag = type === undefined ? "<mark>" : `<mark data-mark="${type}">`;
+    result += `${openTag}${escapeHtml(match[2] ?? "")}</mark>`;
+    lastIndex = start + match[0].length;
+  }
+  result += escapeHtml(text.slice(lastIndex));
+  return result;
+}
+
+function isTableGroup(lines: readonly string[]): boolean {
+  const header = lines[0];
+  const separator = lines[1];
+  if (header === undefined || separator === undefined) return false;
+  return header.includes("|") && separator.includes("-") && TABLE_SEPARATOR_RE.test(separator);
+}
+
+function splitTableRow(line: string): string[] {
+  let trimmed = line.trim();
+  if (trimmed.startsWith("|")) trimmed = trimmed.slice(1);
+  if (trimmed.endsWith("|")) trimmed = trimmed.slice(0, -1);
+  return trimmed.split("|").map((cell) => cell.trim());
+}
+
+function buildTableHtml(lines: readonly string[]): string {
+  const header = splitTableRow(lines[0] ?? "");
+  const rows = lines.slice(2).map(splitTableRow);
+  const thead = `<thead><tr>${header.map((cell) => `<th>${inlineHtml(cell)}</th>`).join("")}</tr></thead>`;
+  const tbody = `<tbody>${rows
+    .map((row) => `<tr>${row.map((cell) => `<td>${inlineHtml(cell)}</td>`).join("")}</tr>`)
+    .join("")}</tbody>`;
+  return `<table>${thead}${tbody}</table>`;
+}
+
+function isListGroup(lines: readonly string[]): boolean {
+  return lines.every((line) => LIST_ITEM_RE.test(line));
+}
+
+function buildListHtml(lines: readonly string[]): string {
+  const tag = ORDERED_ITEM_RE.test(lines[0] ?? "") ? "ol" : "ul";
+  const items = lines
+    .map((line) => (LIST_ITEM_RE.exec(line)?.[1] ?? "").trim())
+    .map((item) => `<li>${inlineHtml(item)}</li>`)
+    .join("");
+  return `<${tag}>${items}</${tag}>`;
+}
+
+function isQuoteGroup(lines: readonly string[]): boolean {
+  return lines.every((line) => QUOTE_LINE_RE.test(line));
+}
+
+function buildQuoteHtml(lines: readonly string[]): string {
+  const text = lines
+    .map((line) => QUOTE_LINE_RE.exec(line)?.[1] ?? "")
+    .join(" ")
+    .trim();
+  return `<blockquote><p>${inlineHtml(text)}</p></blockquote>`;
+}
+
+function buildParagraphHtml(lines: readonly string[]): string {
+  return `<p>${inlineHtml(lines.join(" ").trim())}</p>`;
+}
+
+const FENCE_OPEN_RE = /^(`{3,})(.*)$/;
+
+type BodySegment =
+  | { kind: "text"; lines: readonly string[] }
+  | { kind: "fence"; info: string; lines: readonly string[] };
+
+/** A fenced code block is a Cell that stands on its own even when its body has blank lines,
+ *  so fences are pulled out before the blank-line Cell-boundary rule runs on the rest. */
+function splitFenceSegments(bodyLines: readonly string[]): BodySegment[] {
+  const segments: BodySegment[] = [];
+  let text: string[] = [];
+  let i = 0;
+  while (i < bodyLines.length) {
+    const line = bodyLines[i] ?? "";
+    const open = FENCE_OPEN_RE.exec(line);
+    if (open?.[1] === undefined) {
+      text.push(line);
+      i++;
+      continue;
+    }
+    if (text.length > 0) {
+      segments.push({ kind: "text", lines: text });
+      text = [];
+    }
+    const fenceLen = open[1].length;
+    const info = (open[2] ?? "").trim();
+    const codeLines: string[] = [];
+    i++;
+    for (; i < bodyLines.length; i++) {
+      const line2 = bodyLines[i] ?? "";
+      const closeTrim = line2.trim();
+      if (/^`+$/.test(closeTrim) && closeTrim.length >= fenceLen) {
+        i++;
+        break;
+      }
+      codeLines.push(line2);
+    }
+    segments.push({ kind: "fence", info, lines: codeLines });
+  }
+  if (text.length > 0) segments.push({ kind: "text", lines: text });
+  return segments;
+}
+
+const REGION_START_RE = /#region\s+(\S+)/;
+const REGION_END_RE = /#endregion\b/;
+
+type RegionSpan = { name: string; lines: readonly string[] };
+
+/** `#region name` … `#endregion`; a line range is not a Region, so this only ever
+ *  recognizes those exact markers, never numeric spans. */
+function findRegions(content: string): RegionSpan[] {
+  const lines = content.split(/\r?\n/);
+  const stack: { name: string; start: number }[] = [];
+  const spans: RegionSpan[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i] ?? "";
+    const start = REGION_START_RE.exec(line);
+    if (start?.[1] !== undefined) {
+      stack.push({ name: start[1], start: i + 1 });
+      continue;
+    }
+    if (REGION_END_RE.test(line)) {
+      const top = stack.pop();
+      if (top !== undefined) spans.push({ name: top.name, lines: lines.slice(top.start, i) });
+    }
+  }
+  return spans;
+}
+
+function duplicateRegionNames(spans: readonly RegionSpan[]): string[] {
+  const seen = new Set<string>();
+  const duplicates = new Set<string>();
+  for (const span of spans) {
+    if (seen.has(span.name)) duplicates.add(span.name);
+    seen.add(span.name);
+  }
+  return [...duplicates];
+}
+
+/** A code Cell path is a path relative to the Deck, never a package name or a URL —
+ *  those are something you run, not something to read bytes from. */
+function isCodeFilePath(path: string): boolean {
+  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(path)) return false;
+  return path.startsWith("./") || path.startsWith("../");
+}
+
+/** A flat `key: value` map only — nesting and multi-line scalars are out of v0 scope, matching
+ *  Frontmatter's own line-at-a-time parsing rather than pulling in a YAML library. */
+function coerceYamlScalar(raw: string): Json {
+  if (raw === "" || raw === "null" || raw === "~") return null;
+  if (raw === "true") return true;
+  if (raw === "false") return false;
+  if (/^-?\d+(\.\d+)?$/.test(raw)) return Number(raw);
+  const doubleQuoted = /^"(.*)"$/.exec(raw);
+  if (doubleQuoted?.[1] !== undefined) return doubleQuoted[1];
+  const singleQuoted = /^'(.*)'$/.exec(raw);
+  if (singleQuoted?.[1] !== undefined) return singleQuoted[1];
+  return raw;
+}
+
+function parseEmbedProps(bodyLines: readonly string[]): Json {
+  const props: Record<string, Json> = {};
+  let any = false;
+  for (const line of bodyLines) {
+    const match = /^([A-Za-z_][\w-]*):\s*(.*)$/.exec(line);
+    const key = match?.[1];
+    const raw = match?.[2];
+    if (key === undefined || raw === undefined) continue;
+    props[key] = coerceYamlScalar(raw.trim());
+    any = true;
+  }
+  return any ? props : null;
+}
+
+/** A specifier is a path relative to the Deck, or a package name — unlike a code Cell's
+ *  path, a bare package name is exactly what an Embed is allowed to be, so no path shape
+ *  is enforced here. */
+function buildEmbedCell(info: string, fenceLines: readonly string[]): Cell {
+  const tokens = info.split(/\s+/).filter((token) => token.length > 0);
+  const specifier = tokens[1];
+  if (specifier === undefined) {
+    throw new Error("An Embed fence needs a module specifier: ```embed <specifier>.");
+  }
+  const props = parseEmbedProps(fenceLines);
+  return { blocks: [{ kind: "embed", specifier, props }] };
+}
+
+function buildCodeCell(
+  info: string,
+  fenceLines: readonly string[],
+  slideId: string,
+  files: FileMap,
+  diagnostics: Diagnostic[],
+): Cell {
+  const tokens = info.split(/\s+/).filter((token) => token.length > 0);
+  const lang = tokens[0] ?? "";
+  const pathToken = tokens[1];
+  const body = fenceLines.join("\n");
+
+  if (pathToken === undefined) {
+    const source: CodeSource = { from: "fence", bytes: body };
+    return {
+      blocks: [{ kind: "code", lang, source, html: `<pre><code>${escapeHtml(body)}</code></pre>` }],
+    };
+  }
+
+  if (!isCodeFilePath(pathToken)) {
+    throw new Error(
+      `Code Cell path "${pathToken}" is not a path relative to the Deck; a package name or a URL is not a code path.`,
+    );
+  }
+
+  if (body.trim() !== "") {
+    diagnostics.push({
+      kind: "body-and-path",
+      slide: slideId,
+      message: `Code Cell has both a body and a path "${pathToken}"; a file-backed Cell has an empty body.`,
+    });
+  }
+
+  const hashIndex = pathToken.indexOf("#");
+  const path = hashIndex === -1 ? pathToken : pathToken.slice(0, hashIndex);
+  const region = hashIndex === -1 ? undefined : pathToken.slice(hashIndex + 1);
+
+  const fileContent = files.read(path);
+  const regions = findRegions(fileContent);
+  const duplicates = duplicateRegionNames(regions);
+  if (duplicates.length > 0) {
+    diagnostics.push({
+      kind: "duplicate-region",
+      slide: slideId,
+      message: `Duplicate #region name(s) ${duplicates.join(", ")} in "${path}".`,
+    });
+  }
+
+  let bytes: string;
+  if (region === undefined) {
+    bytes = fileContent;
+  } else {
+    const match = regions.find((span) => span.name === region);
+    if (match === undefined) throw new Error(`No #region "${region}" in "${path}".`);
+    bytes = match.lines.join("\n");
+  }
+
+  const source: CodeSource =
+    region === undefined ? { from: "file", path, bytes } : { from: "file", path, region, bytes };
+  return {
+    blocks: [{ kind: "code", lang, source, html: `<pre><code>${escapeHtml(bytes)}</code></pre>` }],
+  };
+}
+
+function parseBody(
+  bodyLines: readonly string[],
+  slideId: string,
+  files: FileMap,
+  diagnostics: Diagnostic[],
+): { cells: Cell[]; speech: Speech; background?: Image } {
+  const cells: Cell[] = [];
+  const speechBlocks: SpeechBlock[] = [];
+  let background: Image | undefined;
+  for (const segment of splitFenceSegments(bodyLines)) {
+    if (segment.kind === "fence") {
+      const fenceLang = segment.info.split(/\s+/, 1)[0];
+      cells.push(
+        fenceLang === "embed"
+          ? buildEmbedCell(segment.info, segment.lines)
+          : buildCodeCell(segment.info, segment.lines, slideId, files, diagnostics),
+      );
+      continue;
+    }
+    for (const group of groupLogicalLines(preprocessLines(segment.lines))) {
+      const first = group.lines[0] ?? "";
+      const heading = HEADING_RE.exec(first);
+      const depth = heading?.[1]?.length;
+      const text = heading?.[2];
+      if (depth !== undefined && text !== undefined) {
+        cells.push({
+          blocks: [
+            {
+              kind: "heading",
+              depth: depth as 1 | 2 | 3 | 4 | 5 | 6,
+              text: text.trim(),
+              html: escapeHtml(text.trim()),
+            },
+          ],
+        });
+        continue;
+      }
+      const imageMatch = parseImageLine(first);
+      if (imageMatch !== undefined) {
+        const {
+          background: isBackground,
+          fit,
+          focus,
+          looks,
+        } = parseImageTitle(imageMatch.title, slideId, diagnostics);
+        const image: Image = { src: imageMatch.src, alt: imageMatch.alt, fit, focus, looks };
+        if (isBackground) background = image;
+        else cells.push({ blocks: [{ kind: "image", ...image }] });
+        continue;
+      }
+      if (isTableGroup(group.lines)) {
+        cells.push({ blocks: [{ kind: "table", html: buildTableHtml(group.lines) }] });
+        continue;
+      }
+      if (isListGroup(group.lines)) {
+        const html = buildListHtml(group.lines);
+        if (group.promoted) cells.push({ blocks: [{ kind: "prose", html }] });
+        else speechBlocks.push({ kind: "list", html });
+        continue;
+      }
+      if (isQuoteGroup(group.lines)) {
+        const html = buildQuoteHtml(group.lines);
+        if (group.promoted) cells.push({ blocks: [{ kind: "prose", html }] });
+        else speechBlocks.push({ kind: "quote", html });
+        continue;
+      }
+      if (group.lines.join(" ").trim() === "") continue;
+      const html = buildParagraphHtml(group.lines);
+      if (group.promoted) cells.push({ blocks: [{ kind: "prose", html }] });
+      else speechBlocks.push({ kind: "paragraph", html });
+    }
+  }
+  return {
+    cells,
+    speech: { blocks: speechBlocks },
+    ...(background !== undefined ? { background } : {}),
+  };
 }
 
 function buildSlide(
   source: SlideSource,
   id: string,
   isFirst: boolean,
+  files: FileMap,
   diagnostics: Diagnostic[],
 ): Slide {
   const enter: Enter = source.fields["enter"] === "connected" ? "connected" : "cut";
@@ -363,7 +836,8 @@ function buildSlide(
         "enter: connected on the first Slide has no origin; the Arrival is still a hard cut.",
     });
   }
-  const { cells, speech } = parseBody(source.bodyLines);
+  const { cells, speech, background } = parseBody(source.bodyLines, id, files, diagnostics);
+  assertUniqueIdentities(cells, id);
   const auto = autoLayout(cells);
   const layoutField = source.fields["layout"];
   let layout: LayoutName | undefined;
@@ -382,6 +856,7 @@ function buildSlide(
     enter,
     cells,
     speech,
+    ...(background !== undefined ? { background } : {}),
     ...(layout !== undefined ? { layout } : {}),
   };
 }
@@ -426,7 +901,7 @@ export function parseDeck(
 
   const diagnostics: Diagnostic[] = [];
   const slides = splitSlideSources(lines.slice(next)).map((source, i) =>
-    buildSlide(source, String(i + 1), i === 0, diagnostics),
+    buildSlide(source, String(i + 1), i === 0, files, diagnostics),
   );
 
   return {
@@ -476,7 +951,14 @@ export function resolveFrame(deck: Deck, arrival: Arrival): Frame {
   for (const cell of slide.cells) {
     const heading = soleHeading(cell);
     if (heading !== undefined) {
-      names.push({ identity: `heading:${heading.text}`, name: heading.text, class: "heading" });
+      const identity = `heading:${heading.text}`;
+      names.push({ identity, name: mintName("heading", identity), class: "heading" });
+      continue;
+    }
+    const image = soleImage(cell);
+    if (image !== undefined) {
+      const identity = `image:${image.src}`;
+      names.push({ identity, name: mintName("figure", identity), class: "figure" });
     }
   }
 
@@ -494,6 +976,20 @@ export function resolveFrame(deck: Deck, arrival: Arrival): Frame {
   };
 }
 
-export function matchCode(_from: CodeBlock, _to: CodeBlock): CodeMatch {
-  throw new Error("not implemented");
+function codeIdentity(block: CodeBlock): string {
+  return block.source.from === "file" ? block.source.path : block.source.bytes;
+}
+
+/** A code Cell has no content identity the way a heading's text or an image's src does —
+ *  the whole point of the morph is that the bytes changed. Pairing is positional instead:
+ *  the caller aligns each Slide's code Cells by index and hands the pair at that index
+ *  here. A language swap is not the same Cell persisting, so it does not pair. The key is
+ *  minted from both sides together (unlike a heading's independently-mintable name) because
+ *  it only has to agree between the two elements of this one transition, not across the Deck. */
+export function matchCode(from: CodeBlock, to: CodeBlock): CodeMatch {
+  const identity = `code:${from.lang}:${codeIdentity(from)}->${to.lang}:${codeIdentity(to)}`;
+  return {
+    key: mintName("code", identity),
+    pairing: from.lang === to.lang ? "morph" : "none",
+  };
 }

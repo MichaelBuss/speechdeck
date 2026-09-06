@@ -1,0 +1,11 @@
+# Connected Arrivals wired to View Transitions; identity is hashed, not slugged
+
+ADR 0005 and ADR 0012 set the shape; this is the first end-to-end path. `resolveFrame` mints a `Named` for every sole-heading and sole-image Cell on the Slide — identity is `heading:<text>` or `image:<src>`, and the CSS name is `sd-h-<hash>` / `sd-f-<hash>` (FNV-1a of the identity, not a slug of it): two different headings that slug to the same string would otherwise collide, and a hash cannot. Two Cells minting the same identity on one Slide throw in `parseDeck` — a build failure, not a Lint, matching ADR 0005's "runtime does not suffix." A Background does not mint a name; it is not a Cell.
+
+The Solid adapter owns the transition, matching ADR 0013: `repaintFrame` is internal, not exported. A hard cut (including first paint, a deep link, a skip, or `auto` Motion meeting `prefers-reduced-motion`) skips any View Transition still in flight and repaints directly — a hard cut must never keep animating over content that already cut. A connected edge applies `from`'s names to the outgoing DOM, then runs the repaint inside `document.startViewTransition`, applying `to`'s names to the incoming DOM before the browser diffs. No pairing step matches `from` against `to`: two elements carrying the same browser-native `view-transition-name` are already the browser's problem to morph, so identity only has to be consistent, not compared.
+
+Interruption is native, not app state: starting a new `document.startViewTransition` while one is active already skips the previous one to its end state per spec, so a mashed arrow needs no policy, no queue, and no throttle — confirming ADR 0005's rejection of both. A resize has no such native hook, so a `ResizeObserver` on the live Slide calls `.skipTransition()` explicitly; ordinary container-query reflow then applies on its own, giving skip-then-reflow for free.
+
+`view-transition-class` is set to the `Named.class` (`heading` | `code` | `figure`), never the name, so a Theme's `theme.css` can style `::view-transition-group(.heading)` without ever seeing which heading it was.
+
+Not in this ticket: code-Cell pairing (`matchCode` still throws "not implemented"). The acceptance criteria for #63 name only headings and images.

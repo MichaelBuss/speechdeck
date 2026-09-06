@@ -1,0 +1,331 @@
+/* Engine CSS: complete without theme.css. A Theme that ships only theme.json still shows
+ * Marks — this file is the only place that paints them, consuming the --sd-* handles a
+ * Theme's tokens set (see ADR 0004, ADR 0010). Public DOM: mark[data-mark]. */
+
+/* Layout: the arrangement never changes with the viewport (resolveFrame takes no
+ * viewport); only this container-query reflow does, keyed off `.slide`'s own size.
+ * --sd-bg is the travelling paint (ADR 0004): a still Theme (Ink) has no stops, so
+ * it resolves to "transparent" and this rule is a no-op, letting the page show through. */
+.slide {
+  position: relative;
+  container-type: size;
+  container-name: slide;
+  background: var(--sd-bg);
+  color: var(--sd-fg);
+  font-family: var(--sd-font-body);
+}
+
+.cell[data-kind="heading"] :is(h1, h2, h3, h4, h5, h6) {
+  color: var(--sd-title);
+  font-family: var(--sd-font-title);
+}
+
+/* The Background: full-bleed behind `.cells`, not a Cell, so it never bumps a Layout
+ * count. Looks paint the same `data-look` contract as a foreground image. */
+.backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background-repeat: no-repeat;
+}
+
+.backdrop[data-fit="contain"] {
+  background-size: contain;
+}
+
+.backdrop[data-fit="crop"] {
+  background-size: cover;
+}
+
+.backdrop[data-focus="top-left"] {
+  background-position: top left;
+}
+
+.backdrop[data-focus="top"] {
+  background-position: top;
+}
+
+.backdrop[data-focus="top-right"] {
+  background-position: top right;
+}
+
+.backdrop[data-focus="left"] {
+  background-position: left;
+}
+
+.backdrop[data-focus="center"] {
+  background-position: center;
+}
+
+.backdrop[data-focus="right"] {
+  background-position: right;
+}
+
+.backdrop[data-focus="bottom-left"] {
+  background-position: bottom left;
+}
+
+.backdrop[data-focus="bottom"] {
+  background-position: bottom;
+}
+
+.backdrop[data-focus="bottom-right"] {
+  background-position: bottom right;
+}
+
+.cells {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  height: 100%;
+  min-height: 0;
+  gap: min(3.5cqi, 5cqb);
+  padding-inline: min(6cqi, 10cqb);
+  padding-block: min(6cqb, 10cqi);
+}
+
+.cell {
+  min-width: 0;
+  min-height: 0;
+}
+
+.cell[data-kind="image"] {
+  display: flex;
+}
+
+/* Contain/Crop and Focus are shared by every foreground image Cell, whatever Layout it
+ * lands in. */
+img[data-fit] {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  display: block;
+}
+
+img[data-fit="contain"] {
+  object-fit: contain;
+}
+
+img[data-fit="crop"] {
+  object-fit: cover;
+}
+
+img[data-focus="top-left"] {
+  object-position: top left;
+}
+
+img[data-focus="top"] {
+  object-position: top;
+}
+
+img[data-focus="top-right"] {
+  object-position: top right;
+}
+
+img[data-focus="left"] {
+  object-position: left;
+}
+
+img[data-focus="center"] {
+  object-position: center;
+}
+
+img[data-focus="right"] {
+  object-position: right;
+}
+
+img[data-focus="bottom-left"] {
+  object-position: bottom left;
+}
+
+img[data-focus="bottom"] {
+  object-position: bottom;
+}
+
+img[data-focus="bottom-right"] {
+  object-position: bottom right;
+}
+
+/* Looks are combinable: dim and blur each own a rule, and the pair gets a third rule of
+ * higher specificity (two attribute selectors beats one) rather than a var()-splice. */
+[data-look~="dim"] {
+  filter: brightness(0.55) saturate(0.85);
+}
+
+[data-look~="blur"] {
+  filter: blur(6px);
+}
+
+[data-look~="dim"][data-look~="blur"] {
+  filter: brightness(0.55) saturate(0.85) blur(6px);
+}
+
+.cells[data-layout="caption"] {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto;
+}
+
+.cells[data-layout="caption"] [data-caption-order="media"] {
+  order: 1;
+}
+
+.cells[data-layout="caption"] [data-caption-order="text"] {
+  order: 2;
+  text-align: center;
+}
+
+.cells[data-layout="cover"],
+.cells[data-layout="section"],
+.cells[data-layout="solo"] {
+  place-items: center;
+  text-align: center;
+}
+
+.cells[data-layout="split-2"] {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.cells[data-layout="split-3"] {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.cells[data-layout="grid"] {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+}
+
+.cells[data-layout="grid"][data-items="5"],
+.cells[data-layout="grid"][data-items="6"] {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+}
+
+/* A narrow `.slide` stacks Split/Grid into one column — the Layout name is unchanged,
+ * only its CSS arrangement adapts. */
+@container slide (max-width: 42rem) {
+  .cells[data-layout="split-2"],
+  .cells[data-layout="split-3"],
+  .cells[data-layout="grid"] {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: none;
+  }
+}
+
+mark {
+  background: none;
+  color: inherit;
+  padding: 0 0.05em;
+}
+
+mark:not([data-mark]),
+mark[data-mark="underline"] {
+  background-image: linear-gradient(
+    var(--sd-accent-1, currentColor),
+    var(--sd-accent-1, currentColor)
+  );
+  background-repeat: no-repeat;
+  background-position: 0 100%;
+  background-size: 100% 0.12em;
+}
+
+mark[data-mark="circle"] {
+  position: relative;
+}
+
+mark[data-mark="circle"]::before {
+  content: "";
+  position: absolute;
+  inset: -0.15em -0.3em;
+  border: 0.08em solid var(--sd-accent-2, currentColor);
+  border-radius: 45% 55% 60% 40% / 50% 45% 55% 50%;
+  pointer-events: none;
+}
+
+mark[data-mark="highlight"] {
+  background-color: color-mix(in oklab, var(--sd-accent-3, currentColor) 35%, transparent);
+  border-radius: 0.15em;
+}
+
+mark[data-mark="box"] {
+  border: 0.08em solid var(--sd-accent-4, currentColor);
+  border-radius: 0.2em;
+}
+
+mark[data-mark="strike-through"] {
+  text-decoration: line-through;
+  text-decoration-color: var(--sd-accent-1, currentColor);
+  text-decoration-thickness: 0.12em;
+}
+
+/* Inspect (ADR 0014): a stage plus a readout, chrome the audience never mounts. The
+ * stage is a real Slide viewport at the chosen pixel size — never scaled, so Refuse
+ * reads from the same DOM the audience would refuse on. */
+.inspect {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-rows: auto 1fr;
+  height: 100%;
+  min-height: 0;
+}
+
+.inspect-presets {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.inspect-preset[aria-pressed="true"] {
+  font-weight: 600;
+}
+
+.inspect-stage-wrap {
+  display: grid;
+  place-items: center;
+  min-height: 0;
+  min-width: 0;
+  overflow: auto;
+}
+
+.inspect-stage {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.inspect-stage[data-preset="fill"] {
+  width: 100%;
+  height: 100%;
+}
+
+.inspect-handle {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 1rem;
+  height: 1rem;
+  cursor: nwse-resize;
+  touch-action: none;
+}
+
+.inspect-readout {
+  margin: 0;
+  display: grid;
+  gap: 0.25rem 0.75rem;
+}
+
+.readout-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.readout-row > dt {
+  font-weight: 600;
+}
+
+.readout-row > dd {
+  margin: 0;
+}
