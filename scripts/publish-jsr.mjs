@@ -14,6 +14,7 @@ import { fileURLToPath } from "node:url";
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const order = ["core", "themes", "vite", "create", "solid"];
 const extra = process.argv.slice(2);
+const dryRun = extra.includes("--dry-run");
 
 const versionsByName = new Map();
 for (const dir of readdirSync(join(root, "packages"))) {
@@ -51,9 +52,33 @@ function pinWorkspaceDeps(pkgDir) {
   return original;
 }
 
+function alreadyOnJsr(name, version) {
+  const result = spawnSync("curl", ["-fsSL", `https://jsr.io/${name}/meta.json`], {
+    encoding: "utf8",
+  });
+  if (result.status !== 0 || result.stdout === undefined || result.stdout === "") {
+    return false;
+  }
+  try {
+    const meta = JSON.parse(result.stdout);
+    const versions = new Set(Object.keys(meta.versions ?? {}));
+    if (typeof meta.latest === "string" && meta.latest !== "") {
+      versions.add(meta.latest);
+    }
+    return versions.has(version);
+  } catch {
+    return false;
+  }
+}
+
 for (const pkg of order) {
   const pkgDir = join(root, "packages", pkg);
-  console.log(`==== @speechdeck/${pkg} ====`);
+  const jsr = JSON.parse(readFileSync(join(pkgDir, "jsr.json"), "utf8"));
+  console.log(`==== ${jsr.name}@${jsr.version} ====`);
+  if (!dryRun && alreadyOnJsr(jsr.name, jsr.version)) {
+    console.log("already on JSR; skipping");
+    continue;
+  }
   const original = pinWorkspaceDeps(pkgDir);
   try {
     const result = spawnSync("pnpm", ["dlx", "jsr", "publish", "--allow-dirty", ...extra], {

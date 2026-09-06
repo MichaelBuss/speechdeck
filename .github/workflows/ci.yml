@@ -4,6 +4,9 @@ on:
   push:
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   check:
     runs-on: ubuntu-latest
@@ -37,21 +40,61 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm publish:jsr --dry-run
 
-  publish:
-    needs: check
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+  publish-preview:
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      id-token: write
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
         with:
-          version: 11.21.0
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm publish:jsr
+      - id: preview
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          git diff --name-only "$BASE_SHA" HEAD > /tmp/changed.txt
+          mkdir -p /tmp/jsr-meta
+          for pkg in core themes vite create solid; do
+            if ! curl -fsSL "https://jsr.io/@speechdeck/${pkg}/meta.json" -o "/tmp/jsr-meta/${pkg}.json"; then
+              {
+                echo "detail<<EOF"
+                echo "Could not fetch jsr.io metadata; skipping publish preview."
+                echo "EOF"
+                echo "markdown<<EOF"
+                echo "Could not fetch jsr.io metadata; skipping publish preview."
+                echo "EOF"
+              } >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          done
+          node scripts/publish-preview.ts \
+            --changed-files /tmp/changed.txt \
+            --meta-dir /tmp/jsr-meta
+      - name: Post publish preview as an informational PR comment
+        env:
+          DETAIL: ${{ steps.preview.outputs.detail }}
+          MARKDOWN: ${{ steps.preview.outputs.markdown }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          printf '%s\n' "$DETAIL" | tee -a "$GITHUB_STEP_SUMMARY"
+          MARKER="<!-- speechdeck-publish-preview -->"
+          {
+            printf '%s\n\n' "$MARKER"
+            printf '%s\n' "$MARKDOWN"
+          } > /tmp/comment.md
+          EXISTING="$(gh api --paginate "repos/${REPO}/issues/${PR_NUMBER}/comments" --jq ".[] | select(.body | contains(\"${MARKER}\")) | .id" | awk 'NR==1')"
+          if [ -n "$EXISTING" ]; then
+            gh api --method PATCH "repos/${REPO}/issues/comments/${EXISTING}" -F body=@/tmp/comment.md
+          else
+            gh api --method POST "repos/${REPO}/issues/${PR_NUMBER}/comments" -F body=@/tmp/comment.md
+          fi
+          echo "::notice::${DETAIL}"
