@@ -220,6 +220,32 @@ test("writes an AGENTS.md loading block alongside intent.skills", async () => {
   expect(agents).toContain("@speechdeck/*");
 });
 
+// #88: an agent without native Intent support previously had nothing to open — "load ...
+// via TanStack Intent" named a mechanism, not a path. Naming a literal node_modules path
+// instead would be its own bug (wrong under Yarn PnP, which has no node_modules at all), so
+// the fix matches how `npx @tanstack/intent@latest install` itself solves this: teach the
+// agent to run `intent list` / `intent load`, commands any agent can invoke regardless of
+// whether its runtime resolves Intent natively.
+test("AGENTS.md tells the agent to run intent list and intent load, not a hardcoded path", async () => {
+  await init({ yes: true, directory: dir });
+
+  const agents = readFileSync(join(dir, "AGENTS.md"), "utf8");
+  expect(agents).toContain("npx @tanstack/intent@latest list");
+  expect(agents).toContain("npx @tanstack/intent@latest load <package>#<skill>");
+  expect(agents).not.toContain("node_modules");
+});
+
+// Mirrors Intent's own managed-block markers exactly (not a speechdeck-specific spelling) so
+// a later real `npx @tanstack/intent@latest install` recognizes and updates this block
+// instead of adding a duplicate one.
+test("AGENTS.md's skill-loading guidance uses TanStack Intent's real managed-block markers", async () => {
+  await init({ yes: true, directory: dir });
+
+  const agents = readFileSync(join(dir, "AGENTS.md"), "utf8");
+  expect(agents).toContain("<!-- intent-skills:start -->");
+  expect(agents).toContain("<!-- intent-skills:end -->");
+});
+
 test("on a TTY, Clack asks directory, starter, and theme", async () => {
   (process.stdin as { isTTY?: boolean }).isTTY = true;
   (process.stdout as { isTTY?: boolean }).isTTY = true;

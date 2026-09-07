@@ -362,15 +362,30 @@ ${body}
   };
 }
 
+// Mirrors the managed block `npx @tanstack/intent@latest install` itself writes (its
+// "Default output"), marker for marker, so a later real `install` run recognizes this block
+// as already current instead of adding a duplicate. Intent's own guidance never embeds a
+// literal `node_modules` path — those aren't portable across package managers (Yarn PnP has
+// no `node_modules` at all) — it teaches the agent to run `intent list` / `intent load`
+// instead, which stays correct however the target project installs its dependencies (#88).
 function agentsFile(): ScaffoldFile {
   return {
     path: "AGENTS.md",
     content: `# AGENTS
 
-<!-- speechdeck:intent-skills -->
 This project's Agent Skills are declared in \`package.json\` (\`intent.skills: ["@speechdeck/*"]\`)
-and load from each matching package's \`skills/\` directory in \`node_modules\` via TanStack Intent.
-<!-- /speechdeck:intent-skills -->
+and ship inside each matching package's \`skills/\` directory.
+
+<!-- intent-skills:start -->
+## Skill Loading
+
+Before editing files for a substantial task:
+- Run \`npx @tanstack/intent@latest list\` from the workspace root to see available local skills.
+- If a listed skill matches the task, run \`npx @tanstack/intent@latest load <package>#<skill>\` before changing files.
+- Use the loaded \`SKILL.md\` guidance while making the change.
+- Monorepos: when working across packages, run the skill check from the workspace root and prefer the local skill for the package being changed.
+- Multiple matches: prefer the most specific local skill for the package or concern you are changing; load additional skills only when the task spans multiple packages or concerns.
+<!-- intent-skills:end -->
 `,
   };
 }
