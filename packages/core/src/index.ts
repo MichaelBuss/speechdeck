@@ -162,7 +162,9 @@ export type DiagnosticKind =
   | "body-and-path"
   | "impossible-layout"
   | "unknown-image-token"
-  | "frontmatter-only-slide";
+  | "frontmatter-only-slide"
+  | "promotion-promotes-nothing"
+  | "promotion-redundant";
 
 export type Diagnostic = {
   kind: DiagnosticKind;
@@ -414,8 +416,17 @@ function preprocessLines(bodyLines: readonly string[]): LogicalLine[] {
 
 type RawGroup = { lines: string[]; promoted: boolean };
 
-/** A blank line starts a new Cell; a dangling `<!--on-->` with no adjacent block is a no-op. */
-function groupLogicalLines(entries: readonly LogicalLine[]): RawGroup[] {
+/** A blank line starts a new Cell; a dangling `<!--on-->` separated from the next block by
+ *  a blank line promotes nothing, which is a Lint (`promotion-promotes-nothing`) regardless
+ *  of what eventually follows. A `<!--on-->` left pending at the very end of these entries
+ *  with no block ever attached to it is reported back via `danglingPromote` — the caller
+ *  knows whether a fence (redundant) or nothing (promotes nothing) comes next; this function
+ *  does not. */
+function groupLogicalLines(
+  entries: readonly LogicalLine[],
+  slideId: string,
+  diagnostics: Diagnostic[],
+): { groups: RawGroup[]; danglingPromote: boolean } {
   const groups: RawGroup[] = [];
   let current: string[] = [];
   let currentPromoted = false;
@@ -431,6 +442,18 @@ function groupLogicalLines(entries: readonly LogicalLine[]): RawGroup[] {
         current = [];
         currentPromoted = false;
       }
+      // pendingPromote can be true here even after a Cell was just flushed above: the
+      // marker sat after that Cell's own last line, still pending for whatever comes
+      // next — which this blank line just ruled out.
+      if (pendingPromote) {
+        diagnostics.push({
+          kind: "promotion-promotes-nothing",
+          slide: slideId,
+          message:
+            "<!--on--> is followed by a blank line, not a block; Promotion only applies " +
+            "immediately before a paragraph, list, or quote, so this is dropped.",
+        });
+      }
       pendingPromote = false;
       continue;
     }
@@ -439,7 +462,7 @@ function groupLogicalLines(entries: readonly LogicalLine[]): RawGroup[] {
     current.push(entry.text);
   }
   if (current.length > 0) groups.push({ lines: current, promoted: currentPromoted });
-  return groups;
+  return { groups, danglingPromote: pendingPromote };
 }
 
 const FIT_VALUES: readonly Fit[] = ["contain", "crop"];
@@ -776,6 +799,22 @@ function buildCodeCell(
   };
 }
 
+/** A heading, image, or table is already its own Cell without Promotion — `<!--on-->`
+ *  immediately before one has no effect, and signals the author likely misunderstands
+ *  Promotion (CONTEXT.md: it puts a paragraph, list, or quote on the Slide; those three
+ *  kinds are never Speech in the first place). */
+function pushRedundantPromotion(
+  diagnostics: Diagnostic[],
+  slideId: string,
+  kindLabel: string,
+): void {
+  diagnostics.push({
+    kind: "promotion-redundant",
+    slide: slideId,
+    message: `<!--on--> immediately before ${kindLabel} is redundant; it is already its own Cell without Promotion.`,
+  });
+}
+
 function parseBody(
   bodyLines: readonly string[],
   slideId: string,
@@ -785,7 +824,10 @@ function parseBody(
   const cells: Cell[] = [];
   const speechBlocks: SpeechBlock[] = [];
   let background: Image | undefined;
-  for (const segment of splitFenceSegments(bodyLines)) {
+  const segments = splitFenceSegments(bodyLines);
+  for (let segmentIndex = 0; segmentIndex < segments.length; segmentIndex++) {
+    const segment = segments[segmentIndex];
+    if (segment === undefined) continue;
     if (segment.kind === "fence") {
       const fenceLang = segment.info.split(/\s+/, 1)[0];
       cells.push(
@@ -795,12 +837,36 @@ function parseBody(
       );
       continue;
     }
-    for (const group of groupLogicalLines(preprocessLines(segment.lines))) {
+    const { groups, danglingPromote } = groupLogicalLines(
+      preprocessLines(segment.lines),
+      slideId,
+      diagnostics,
+    );
+    // A text segment can only end because a fence started or the Slide body ran out — the
+    // two are never adjacent without a fence between them (splitFenceSegments guarantees
+    // that), so a dangling Promotion here is either immediately before that next fence
+    // (redundant — code/Embed are already their own Cell) or truly attached to nothing.
+    if (danglingPromote) {
+      const nextIsFence = segments[segmentIndex + 1]?.kind === "fence";
+      if (nextIsFence) {
+        pushRedundantPromotion(diagnostics, slideId, "a fenced code Cell or Embed");
+      } else {
+        diagnostics.push({
+          kind: "promotion-promotes-nothing",
+          slide: slideId,
+          message:
+            "<!--on--> has no block after it before the Slide ends; Promotion only " +
+            "applies immediately before a paragraph, list, or quote, so this is dropped.",
+        });
+      }
+    }
+    for (const group of groups) {
       const first = group.lines[0] ?? "";
       const heading = HEADING_RE.exec(first);
       const depth = heading?.[1]?.length;
       const text = heading?.[2];
       if (depth !== undefined && text !== undefined) {
+        if (group.promoted) pushRedundantPromotion(diagnostics, slideId, "a heading");
         cells.push({
           blocks: [
             {
@@ -815,6 +881,7 @@ function parseBody(
       }
       const imageMatch = parseImageLine(first);
       if (imageMatch !== undefined) {
+        if (group.promoted) pushRedundantPromotion(diagnostics, slideId, "an image");
         const {
           background: isBackground,
           fit,
@@ -827,6 +894,7 @@ function parseBody(
         continue;
       }
       if (isTableGroup(group.lines)) {
+        if (group.promoted) pushRedundantPromotion(diagnostics, slideId, "a table");
         cells.push({ blocks: [{ kind: "table", html: buildTableHtml(group.lines) }] });
         continue;
       }

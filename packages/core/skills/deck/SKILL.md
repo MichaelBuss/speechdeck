@@ -8,7 +8,7 @@ description: >
   section, solo, split-2, split-3, grid, caption) and the `layout:` override,
   and reading `parseDeck`'s `diagnostics` (Lint kinds: connected-on-first,
   duplicate-region, body-and-path, impossible-layout, unknown-image-token,
-  frontmatter-only-slide).
+  frontmatter-only-slide, promotion-promotes-nothing, promotion-redundant).
   Load when writing or editing a `deck.md`, choosing or debugging a Slide's
   Layout, or interpreting a Lint. Refuse is not here — it is a paint fact
   only Inspect can show.
@@ -126,6 +126,15 @@ This paragraph is not — it stays Speech.
 Any other HTML comment is a **Comment**: author-private, never shown
 anywhere. Only the exact `<!--on-->` line triggers Promotion.
 
+`<!--on-->` must be **immediately** before the block — no blank line in
+between. A `<!--on-->` separated from the next block by a blank line, or
+with nothing after it before the Slide ends, promotes nothing: it is a
+`promotion-promotes-nothing` Lint, and the next block (if any) stays Speech.
+A `<!--on-->` immediately before a block that is already its own Cell
+without Promotion — a heading, image, table, fenced code Cell, or Embed — is
+a `promotion-redundant` Lint: it has no effect, and usually signals the
+author meant to promote something else nearby.
+
 ### 3. Layout: auto pick and override
 
 `parseDeck` (and `resolveFrame`) compute the auto Layout from a Slide's
@@ -170,6 +179,12 @@ function, and no `console.log` from core. The closed `kind` union is:
   immediately follows (it opened a new Slide instead of closing the
   Frontmatter, so these fields belonged to the next Slide), or the Deck
   simply ends there with nothing to show.
+- `promotion-promotes-nothing` — a `<!--on-->` separated from the next
+  block by a blank line, or with no block after it before the Slide ends;
+  Promotion did not happen.
+- `promotion-redundant` — a `<!--on-->` immediately before a heading,
+  image, table, fenced code Cell, or Embed — all already their own Cell
+  without Promotion, so it has no effect.
 
 If you need to tell an author their Slide doesn't fit at a given viewport,
 that is **Refuse**, and it is not a Lint and never appears in `diagnostics` —
@@ -252,6 +267,30 @@ This is the point I want to make.
 
 Without `<!--on-->` immediately before it, a paragraph, list, or quote is
 Speech — it renders in Presenter view only, never on the Slide.
+
+### [MEDIUM] Leaving a blank line between `<!--on-->` and the block it should promote
+
+Wrong:
+
+```text
+<!--on-->
+
+- Every name you pick is a name someone else has to learn
+- Every field you expose is a field you can never remove
+```
+
+The blank line breaks adjacency, so nothing is promoted — the list stays
+Speech, and the Slide is left with only whatever heading preceded it.
+This is a `promotion-promotes-nothing` diagnostic; look for it if a Slide
+renders emptier than expected.
+
+Correct: no blank line between the marker and the block:
+
+```text
+<!--on-->
+- Every name you pick is a name someone else has to learn
+- Every field you expose is a field you can never remove
+```
 
 ### [MEDIUM] Pasting code into the fence when a code Cell should track a file
 
