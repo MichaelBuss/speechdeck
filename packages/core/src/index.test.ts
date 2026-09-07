@@ -215,9 +215,9 @@ test("parseDeck: two Slides may share a heading; they do not share an address", 
   expect(deck.slides[1]?.cells[0]?.blocks[0]).toMatchObject({ kind: "heading", text: "Same" });
 });
 
-test("parseDeck: <!--on--> immediately before a paragraph puts it on the Slide as a Cell", () => {
+test("parseDeck: <!--on--> immediately before a paragraph puts it on the Slide as a Cell, no Lint", () => {
   const source = "---\ntheme: @speechdeck/themes/harbour\n---\n<!--on-->\nThis is promoted.\n";
-  const { deck } = parseDeck(source, files);
+  const { deck, diagnostics } = parseDeck(source, files);
   const slide = deck.slides[0];
 
   expect(slide?.speech.blocks).toHaveLength(0);
@@ -227,9 +227,10 @@ test("parseDeck: <!--on--> immediately before a paragraph puts it on the Slide a
     html: "<p>This is promoted.</p>",
   });
   expect(resolveFrame(deck, { to: "1" }).layout).toBe("solo");
+  expect(diagnostics).toEqual([]);
 });
 
-test("parseDeck: <!--on--> immediately before a list or quote promotes it too", () => {
+test("parseDeck: <!--on--> immediately before a list or quote promotes it too, no Lint", () => {
   const source = [
     "---",
     "theme: @speechdeck/themes/harbour",
@@ -241,7 +242,7 @@ test("parseDeck: <!--on--> immediately before a list or quote promotes it too", 
     "<!--on-->",
     "> quoted",
   ].join("\n");
-  const { deck } = parseDeck(source, files);
+  const { deck, diagnostics } = parseDeck(source, files);
   const slide = deck.slides[0];
 
   expect(slide?.cells).toHaveLength(2);
@@ -253,11 +254,27 @@ test("parseDeck: <!--on--> immediately before a list or quote promotes it too", 
     kind: "prose",
     html: "<blockquote><p>quoted</p></blockquote>",
   });
+  expect(diagnostics).toEqual([]);
 });
 
-test("parseDeck: a blank line between <!--on--> and the block cancels the Promotion", () => {
+test("parseDeck: <!--on--> right after other Speech, then a blank line, still promotes nothing and is a Lint", () => {
+  const source =
+    "---\ntheme: @speechdeck/themes/harbour\n---\nSome text.\n<!--on-->\n\nNext paragraph.\n";
+  const { deck, diagnostics } = parseDeck(source, files);
+  const slide = deck.slides[0];
+
+  expect(slide?.cells).toHaveLength(0);
+  expect(slide?.speech.blocks).toMatchObject([
+    { kind: "paragraph", html: "<p>Some text.</p>" },
+    { kind: "paragraph", html: "<p>Next paragraph.</p>" },
+  ]);
+  expect(diagnostics).toHaveLength(1);
+  expect(diagnostics[0]).toMatchObject({ kind: "promotion-promotes-nothing", slide: "1" });
+});
+
+test("parseDeck: a blank line between <!--on--> and the block cancels the Promotion, and is a Lint", () => {
   const source = "---\ntheme: @speechdeck/themes/harbour\n---\n<!--on-->\n\nNot promoted.\n";
-  const { deck } = parseDeck(source, files);
+  const { deck, diagnostics } = parseDeck(source, files);
   const slide = deck.slides[0];
 
   expect(slide?.cells).toHaveLength(0);
@@ -265,6 +282,83 @@ test("parseDeck: a blank line between <!--on--> and the block cancels the Promot
     kind: "paragraph",
     html: "<p>Not promoted.</p>",
   });
+  expect(diagnostics).toHaveLength(1);
+  expect(diagnostics[0]).toMatchObject({ kind: "promotion-promotes-nothing", slide: "1" });
+});
+
+test("parseDeck: a <!--on--> with nothing after it at all promotes nothing, and is a Lint", () => {
+  const source = "---\ntheme: @speechdeck/themes/harbour\n---\n## Heading\n\n<!--on-->";
+  const { deck, diagnostics } = parseDeck(source, files);
+  const slide = deck.slides[0];
+
+  expect(slide?.cells).toHaveLength(1);
+  expect(slide?.speech.blocks).toHaveLength(0);
+  expect(diagnostics).toHaveLength(1);
+  expect(diagnostics[0]).toMatchObject({ kind: "promotion-promotes-nothing", slide: "1" });
+});
+
+test("parseDeck: <!--on--> immediately before a fenced code Cell is redundant, and is a Lint", () => {
+  const source = [
+    "---",
+    "theme: @speechdeck/themes/harbour",
+    "---",
+    "<!--on-->",
+    "```ts",
+    "const x = 1;",
+    "```",
+  ].join("\n");
+  const { deck, diagnostics } = parseDeck(source, files);
+  const slide = deck.slides[0];
+
+  expect(slide?.cells).toHaveLength(1);
+  expect(slide?.cells[0]?.blocks[0]?.kind).toBe("code");
+  expect(diagnostics).toHaveLength(1);
+  expect(diagnostics[0]).toMatchObject({ kind: "promotion-redundant", slide: "1" });
+});
+
+test("parseDeck: <!--on--> immediately before an Embed is redundant, and is a Lint", () => {
+  const source = [
+    "---",
+    "theme: @speechdeck/themes/harbour",
+    "---",
+    "<!--on-->",
+    "```embed ./demo.ts",
+    "```",
+  ].join("\n");
+  const { deck, diagnostics } = parseDeck(source, files);
+  const slide = deck.slides[0];
+
+  expect(slide?.cells).toHaveLength(1);
+  expect(slide?.cells[0]?.blocks[0]?.kind).toBe("embed");
+  expect(diagnostics).toHaveLength(1);
+  expect(diagnostics[0]).toMatchObject({ kind: "promotion-redundant", slide: "1" });
+});
+
+test("parseDeck: <!--on--> immediately before a heading, image, or table is redundant, and is a Lint", () => {
+  const source = [
+    "---",
+    "theme: @speechdeck/themes/harbour",
+    "---",
+    "<!--on-->",
+    "## Heading",
+    "",
+    "<!--on-->",
+    "![](./a.jpg)",
+    "",
+    "<!--on-->",
+    "| a | b |",
+    "| - | - |",
+    "| 1 | 2 |",
+  ].join("\n");
+  const { deck, diagnostics } = parseDeck(source, files);
+  const slide = deck.slides[0];
+
+  expect(slide?.cells).toHaveLength(3);
+  expect(slide?.cells[0]?.blocks[0]?.kind).toBe("heading");
+  expect(slide?.cells[1]?.blocks[0]?.kind).toBe("image");
+  expect(slide?.cells[2]?.blocks[0]?.kind).toBe("table");
+  expect(diagnostics).toHaveLength(3);
+  expect(diagnostics.every((d) => d.kind === "promotion-redundant")).toBe(true);
 });
 
 test("parseDeck: any other HTML comment is a Comment, never a Cell or Speech, and does not split adjacent lines", () => {
