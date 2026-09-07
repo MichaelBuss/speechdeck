@@ -7,7 +7,8 @@ description: >
   vs Speech, Promotion (`<!--on-->`) vs Comment, the auto Layout pick (cover,
   section, solo, split-2, split-3, grid, caption) and the `layout:` override,
   and reading `parseDeck`'s `diagnostics` (Lint kinds: connected-on-first,
-  duplicate-region, body-and-path, impossible-layout, unknown-image-token).
+  duplicate-region, body-and-path, impossible-layout, unknown-image-token,
+  frontmatter-only-slide).
   Load when writing or editing a `deck.md`, choosing or debugging a Slide's
   Layout, or interpreting a Lint. Refuse is not here — it is a paint fact
   only Inspect can show.
@@ -64,19 +65,46 @@ motion: auto
 - `motion` is `auto` or `always`; default `auto`.
 
 A `---` line inside the body starts a new Slide. That Slide may have its own
-Frontmatter immediately after its `---`:
+Frontmatter immediately after its `---` — one or more bare `key: value`
+lines, ended by the first line that isn't `layout:`/`enter:` (typically a
+blank line before the Slide's Cells begin). Unlike Deck Frontmatter, there is
+**no closing `---`**: a `---` always starts the _next_ Slide, even right
+after Slide Frontmatter, so writing one there does not close the fields — it
+opens a new, empty Slide and leaves your fields stranded on it.
 
 ```text
 ---
 layout: split-2
 enter: connected
----
+
+## Two
 ```
 
 - `layout` and `enter` are Slide-only; `theme`/`appearance`/`motion` never
   appear here.
 - `enter` is `cut` (default) or `connected`. `connected` on the first Slide
   is a Lint (`connected-on-first`) — the Arrival still hard-cuts.
+- A Slide whose only content is `layout:`/`enter:` fields with no Cells
+  after them (no blank line before the next Slide's content) is a Lint
+  (`frontmatter-only-slide`) — see the worked example below.
+
+A full connected pair, written correctly — no closing `---`, just a blank
+line before the next Cell:
+
+```text
+---
+theme: @speechdeck/themes/harbour
+---
+## One
+
+---
+enter: connected
+
+## Two
+```
+
+This yields two Slides: `One` (`enter: cut`, the default), then `Two`
+(`enter: connected`), which plays a connected transition in from `One`.
 
 ### 2. Cells vs Speech vs Comment
 
@@ -137,6 +165,11 @@ function, and no `console.log` from core. The closed `kind` union is:
   auto still renders.
 - `unknown-image-token` — an image title token that isn't `background`,
   `contain`/`crop`, a Focus, or a Look.
+- `frontmatter-only-slide` — a Slide's only content is `layout:`/`enter:`
+  Frontmatter with no Cells and no background: either another `---`
+  immediately follows (it opened a new Slide instead of closing the
+  Frontmatter, so these fields belonged to the next Slide), or the Deck
+  simply ends there with nothing to show.
 
 If you need to tell an author their Slide doesn't fit at a given viewport,
 that is **Refuse**, and it is not a Lint and never appears in `diagnostics` —
@@ -144,6 +177,38 @@ core has no DOM to measure against. Point them at **Inspect**
 (`pnpm inspect`, or `SPEECHDECK_INSPECT=1 vite`) to see it.
 
 ## Common Mistakes
+
+### [HIGH] Closing Slide Frontmatter with a `---`, the way Deck Frontmatter closes
+
+Wrong:
+
+```text
+---
+layout: split-2
+enter: connected
+---
+## Two
+```
+
+This looks parallel to Deck Frontmatter (which _is_ closed by a `---`), but
+Slide Frontmatter is ended by a **blank line**, not a `---`. The trailing
+`---` here is read as the start of a new Slide — an empty one, since nothing
+follows it before the next `---`/end of input. `layout` and `enter` land on
+that phantom Slide instead of on `## Two`, which reverts to `enter: cut` with
+no override. The only signal is a `frontmatter-only-slide` (and often also
+`impossible-layout`) diagnostic pointing at a Slide you never meant to
+create.
+
+Correct: end Slide Frontmatter with a blank line, then write the Slide's
+Cells directly — no closing `---`:
+
+```text
+---
+layout: split-2
+enter: connected
+
+## Two
+```
 
 ### [HIGH] Expecting Refuse in `diagnostics`
 
