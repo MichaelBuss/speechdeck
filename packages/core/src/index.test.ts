@@ -734,6 +734,113 @@ test("parseDeck: an Embed fence with no specifier does not yield a Deck", () => 
   expect(() => parseDeck(source, files)).toThrow();
 });
 
+test("parseDeck: a bare --- inside a fenced code block does not split the Deck (issue #84)", () => {
+  const source = [
+    "---",
+    "theme: @speechdeck/themes/harbour",
+    "---",
+    "# One",
+    "",
+    "```yaml",
+    "a: 1",
+    "---",
+    "b: 2",
+    "```",
+  ].join("\n");
+  const { deck, diagnostics } = parseDeck(source, files);
+
+  expect(diagnostics).toEqual([]);
+  expect(deck.slides).toHaveLength(1);
+  expect(deck.slides[0]?.cells).toHaveLength(2);
+  expect(deck.slides[0]?.cells[1]?.blocks[0]).toMatchObject({
+    kind: "code",
+    lang: "yaml",
+    source: { from: "fence", bytes: "a: 1\n---\nb: 2" },
+  });
+});
+
+test("parseDeck: a bare --- inside a ~~~ fence does not split the Deck either", () => {
+  const source = [
+    "---",
+    "theme: @speechdeck/themes/harbour",
+    "---",
+    "~~~yaml",
+    "a: 1",
+    "---",
+    "b: 2",
+    "~~~",
+  ].join("\n");
+  const { deck } = parseDeck(source, files);
+
+  expect(deck.slides).toHaveLength(1);
+  expect(deck.slides[0]?.cells[0]?.blocks[0]).toMatchObject({
+    kind: "code",
+    lang: "yaml",
+    source: { from: "fence", bytes: "a: 1\n---\nb: 2" },
+  });
+});
+
+test("parseDeck: a longer outer fence protects a shorter fence-looking line inside it, including one that looks like a Slide separator", () => {
+  const source = [
+    "---",
+    "theme: @speechdeck/themes/harbour",
+    "---",
+    "````md",
+    "```yaml",
+    "a: 1",
+    "---",
+    "b: 2",
+    "```",
+    "````",
+  ].join("\n");
+  const { deck } = parseDeck(source, files);
+
+  expect(deck.slides).toHaveLength(1);
+  expect(deck.slides[0]?.cells[0]?.blocks[0]).toMatchObject({
+    kind: "code",
+    lang: "md",
+    source: { from: "fence", bytes: "```yaml\na: 1\n---\nb: 2\n```" },
+  });
+});
+
+test("parseDeck: a --- outside any fence still starts a new Slide, unchanged", () => {
+  const source = [
+    "---",
+    "theme: @speechdeck/themes/harbour",
+    "---",
+    "```yaml",
+    "a: 1",
+    "```",
+    "---",
+    "## Second",
+  ].join("\n");
+  const { deck } = parseDeck(source, files);
+
+  expect(deck.slides).toHaveLength(2);
+  expect(deck.slides[1]?.cells[0]?.blocks[0]).toMatchObject({ kind: "heading", text: "Second" });
+});
+
+test("parseDeck: *** and ___ are never Slide separators, inside or outside a fence", () => {
+  const source = [
+    "---",
+    "theme: @speechdeck/themes/harbour",
+    "---",
+    "# One",
+    "",
+    "***",
+    "",
+    "___",
+    "",
+    "```txt",
+    "***",
+    "___",
+    "```",
+  ].join("\n");
+  const { deck } = parseDeck(source, files);
+
+  expect(deck.slides).toHaveLength(1);
+});
+
 function codeBlock(lang: string, bytes: string): CodeBlock {
   return { kind: "code", lang, source: { from: "fence", bytes }, html: "" };
 }
