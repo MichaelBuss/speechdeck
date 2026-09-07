@@ -395,6 +395,73 @@ test("parseDeck: an impossible layout override is a Lint; auto still renders; la
   expect(frame.layoutSource).toBe("override");
 });
 
+test("parseDeck: Slide Frontmatter followed directly by another --- is a Lint — the fields belong to a phantom, empty Slide", () => {
+  const source =
+    "---\ntheme: @speechdeck/themes/harbour\n---\n# Cover\n\n---\nlayout: split-2\nenter: connected\n---\n## Two\n";
+  const { deck, diagnostics } = parseDeck(source, files);
+
+  expect(deck.slides).toHaveLength(3);
+  expect(deck.slides[1]).toMatchObject({ layout: "split-2", enter: "connected", cells: [] });
+  expect(diagnostics).toContainEqual(
+    expect.objectContaining({ kind: "frontmatter-only-slide", slide: "2" }),
+  );
+});
+
+test("parseDeck: frontmatter-only-slide fires even when only enter: is set (no impossible-layout to piggyback on)", () => {
+  const source =
+    "---\ntheme: @speechdeck/themes/harbour\n---\n# Cover\n\n---\nenter: connected\n---\n## Two\n";
+  const { deck, diagnostics } = parseDeck(source, files);
+
+  expect(deck.slides).toHaveLength(3);
+  expect(diagnostics).toContainEqual(
+    expect.objectContaining({ kind: "frontmatter-only-slide", slide: "2" }),
+  );
+});
+
+test("parseDeck: frontmatter-only-slide does not fire for a Slide with no Frontmatter fields at all", () => {
+  const source = "---\ntheme: @speechdeck/themes/harbour\n---\n# One\n---\n---\n## Three\n";
+  const { deck, diagnostics } = parseDeck(source, files);
+
+  expect(deck.slides).toHaveLength(3);
+  expect(deck.slides[1]).toMatchObject({ cells: [] });
+  expect(diagnostics.filter((d) => d.kind === "frontmatter-only-slide")).toEqual([]);
+});
+
+test("parseDeck: frontmatter-only-slide does not fire for a legitimate background-only Slide", () => {
+  const source =
+    '---\ntheme: @speechdeck/themes/harbour\n---\nenter: connected\n![skyline](./skyline.jpg "background")\n';
+  const { deck, diagnostics } = parseDeck(source, files);
+
+  expect(deck.slides[0]).toMatchObject({ cells: [], enter: "connected" });
+  expect(deck.slides[0]?.background).toBeDefined();
+  expect(diagnostics.filter((d) => d.kind === "frontmatter-only-slide")).toEqual([]);
+});
+
+test("parseDeck: frontmatter-only-slide and impossible-layout coexist when the phantom Slide also carries a layout: override", () => {
+  const source =
+    "---\ntheme: @speechdeck/themes/harbour\n---\n# Cover\n\n---\nlayout: split-2\n---\n## Two\n";
+  const { deck, diagnostics } = parseDeck(source, files);
+
+  expect(deck.slides).toHaveLength(3);
+  expect(diagnostics).toContainEqual(
+    expect.objectContaining({ kind: "frontmatter-only-slide", slide: "2" }),
+  );
+  expect(diagnostics).toContainEqual(
+    expect.objectContaining({ kind: "impossible-layout", slide: "2" }),
+  );
+});
+
+test("parseDeck: frontmatter-only-slide also fires when the phantom Slide is the last one in the Deck (Frontmatter with nothing after it, no trailing ---)", () => {
+  const source = "---\ntheme: @speechdeck/themes/harbour\n---\n# Cover\n\n---\nenter: connected\n";
+  const { deck, diagnostics } = parseDeck(source, files);
+
+  expect(deck.slides).toHaveLength(2);
+  expect(deck.slides[1]).toMatchObject({ enter: "connected", cells: [] });
+  expect(diagnostics).toContainEqual(
+    expect.objectContaining({ kind: "frontmatter-only-slide", slide: "2" }),
+  );
+});
+
 test("parseDeck: a Slide with no layout: field has no layout key at all — empty Frontmatter is omitted", () => {
   const source = "---\ntheme: @speechdeck/themes/harbour\n---\n# Title\n";
   const { deck } = parseDeck(source, files);

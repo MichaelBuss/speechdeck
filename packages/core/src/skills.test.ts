@@ -37,6 +37,7 @@ const DIAGNOSTIC_KINDS: readonly DiagnosticKind[] = [
   "body-and-path",
   "impossible-layout",
   "unknown-image-token",
+  "frontmatter-only-slide",
 ];
 
 // The skill must read parseDeck's actual diagnostic kinds, not invent its own list — this

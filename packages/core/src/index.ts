@@ -161,7 +161,8 @@ export type DiagnosticKind =
   | "duplicate-region"
   | "body-and-path"
   | "impossible-layout"
-  | "unknown-image-token";
+  | "unknown-image-token"
+  | "frontmatter-only-slide";
 
 export type Diagnostic = {
   kind: DiagnosticKind;
@@ -871,6 +872,16 @@ function buildSlide(
     });
   }
   const { cells, speech, background } = parseBody(source.bodyLines, id, files, diagnostics);
+  if (Object.keys(source.fields).length > 0 && cells.length === 0 && background === undefined) {
+    diagnostics.push({
+      kind: "frontmatter-only-slide",
+      slide: id,
+      message:
+        "This Slide has Frontmatter (layout/enter) but no Cells before the next Slide " +
+        "separator — a bare `---` right after Slide Frontmatter starts a new Slide, it does " +
+        "not close the Frontmatter. These fields likely belonged to the next Slide's content.",
+    });
+  }
   assertUniqueIdentities(cells, id);
   const auto = autoLayout(cells);
   const layoutField = source.fields["layout"];
