@@ -328,9 +328,48 @@ function parseFrontmatterFields(
 
 type SlideSource = { fields: Record<string, string>; bodyLines: readonly string[] };
 
+/** A fence opens on a line of 3+ backticks or 3+ tildes, optionally followed by an info
+ *  string; the run length matters because a closing fence must be at least as long. Shared
+ *  by Slide-splitting and Cell-extraction so both honour the same fence exactly once. */
+type FenceOpen = { char: string; len: number; info: string };
+const FENCE_OPEN_RE = /^(`{3,}|~{3,})(.*)$/;
+
+function parseFenceOpen(line: string): FenceOpen | undefined {
+  const match = FENCE_OPEN_RE.exec(line);
+  const marker = match?.[1];
+  if (marker === undefined) return undefined;
+  return { char: marker[0] ?? "`", len: marker.length, info: (match?.[2] ?? "").trim() };
+}
+
+function isFenceClose(line: string, fence: Pick<FenceOpen, "char" | "len">): boolean {
+  const trimmed = line.trim();
+  if (trimmed.length < fence.len) return false;
+  for (let i = 0; i < trimmed.length; i++) {
+    if (trimmed[i] !== fence.char) return false;
+  }
+  return true;
+}
+
+/** A `---` line only starts a new Slide outside a fence — a fenced Cell's own body (a YAML
+ *  document, a Kubernetes manifest, SpeechDeck's own Markdown) may legitimately contain a
+ *  bare `---`, and that is fence content, not a Slide boundary. An unterminated fence at
+ *  end-of-input stays open through the rest of the Deck body, so no split can occur inside
+ *  it. `***` and `___` are never Slide separators, inside or outside a fence. */
 function splitSlideSources(bodyLines: readonly string[]): SlideSource[] {
   const chunks: string[][] = [[]];
+  let openFence: FenceOpen | undefined;
   for (const line of bodyLines) {
+    if (openFence !== undefined) {
+      chunks[chunks.length - 1]?.push(line);
+      if (isFenceClose(line, openFence)) openFence = undefined;
+      continue;
+    }
+    const open = parseFenceOpen(line);
+    if (open !== undefined) {
+      openFence = open;
+      chunks[chunks.length - 1]?.push(line);
+      continue;
+    }
     if (line.trim() === "---") chunks.push([]);
     else chunks[chunks.length - 1]?.push(line);
   }
@@ -550,8 +589,6 @@ function buildParagraphHtml(lines: readonly string[]): string {
   return `<p>${inlineHtml(lines.join(" ").trim())}</p>`;
 }
 
-const FENCE_OPEN_RE = /^(`{3,})(.*)$/;
-
 type BodySegment =
   | { kind: "text"; lines: readonly string[] }
   | { kind: "fence"; info: string; lines: readonly string[] };
@@ -564,8 +601,8 @@ function splitFenceSegments(bodyLines: readonly string[]): BodySegment[] {
   let i = 0;
   while (i < bodyLines.length) {
     const line = bodyLines[i] ?? "";
-    const open = FENCE_OPEN_RE.exec(line);
-    if (open?.[1] === undefined) {
+    const open = parseFenceOpen(line);
+    if (open === undefined) {
       text.push(line);
       i++;
       continue;
@@ -574,20 +611,17 @@ function splitFenceSegments(bodyLines: readonly string[]): BodySegment[] {
       segments.push({ kind: "text", lines: text });
       text = [];
     }
-    const fenceLen = open[1].length;
-    const info = (open[2] ?? "").trim();
     const codeLines: string[] = [];
     i++;
     for (; i < bodyLines.length; i++) {
       const line2 = bodyLines[i] ?? "";
-      const closeTrim = line2.trim();
-      if (/^`+$/.test(closeTrim) && closeTrim.length >= fenceLen) {
+      if (isFenceClose(line2, open)) {
         i++;
         break;
       }
       codeLines.push(line2);
     }
-    segments.push({ kind: "fence", info, lines: codeLines });
+    segments.push({ kind: "fence", info: open.info, lines: codeLines });
   }
   if (text.length > 0) segments.push({ kind: "text", lines: text });
   return segments;
