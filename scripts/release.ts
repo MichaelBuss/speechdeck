@@ -161,8 +161,17 @@ function isCliEntry(): boolean {
 
 type ShResult = { status: number; stdout: string; stderr: string };
 
-function sh(command: string, args: readonly string[], cwd?: string): ShResult {
-  const result = spawnSync(command, args, { encoding: "utf8", cwd });
+function sh(command: string, args: readonly string[], cwd?: string, interactive = false): ShResult {
+  const result = spawnSync(command, args, {
+    encoding: "utf8",
+    cwd,
+    stdio: interactive ? "inherit" : undefined,
+  });
+  if (interactive) {
+    // With inherited stdio npm drives the 2FA browser flow itself; there is
+    // no captured output to return.
+    return { status: result.status ?? 1, stdout: "", stderr: "" };
+  }
   return {
     status: result.status ?? 1,
     stdout: result.stdout ?? "",
@@ -290,6 +299,7 @@ async function publishOne(
   versionsByName: ReadonlyMap<string, string>,
   dryRun: boolean,
   local = false,
+  interactive = false,
 ): Promise<ShResult> {
   const manifestPath = join(pkg.dir, "package.json");
   const original = await readFile(manifestPath, "utf8");
@@ -304,7 +314,7 @@ async function publishOne(
         // publishes under the human's own npm login instead.
         args.push("--provenance");
       }
-      return sh("npm", args, pkg.dir);
+      return sh("npm", args, pkg.dir, interactive);
     }
     const extra = dryRun ? ["--dry-run"] : [];
     return sh("pnpm", ["dlx", "jsr", "publish", "--allow-dirty", ...extra], pkg.dir);
@@ -342,18 +352,18 @@ export async function releaseCli(argv: readonly string[]): Promise<number> {
     // First publish: a package must exist on npm before npmjs.com lets a
     // human configure Trusted Publishing for it. This creates the five at
     // their current versions under the local npm login (run `npm login`
-    // first; 2FA prompts per package), pinning workspace deps like CI does.
-    // JSR, tags, and GitHub Releases are untouched; re-run safely — a
-    // version already on npm is skipped.
+    // first), pinning workspace deps like CI does. npm runs with inherited
+    // stdio so its 2FA browser authentication works — expect one browser
+    // round per package. JSR, tags, and GitHub Releases are untouched;
+    // re-run safely — a version already on npm is skipped.
     const failures: string[] = [];
     for (const pkg of packages) {
-      const result = await publishOne(pkg, "npm", versionsByName, false, true);
+      const result = await publishOne(pkg, "npm", versionsByName, false, true, true);
       if (result.status !== 0 && isNpmAlreadyPublished(result.stderr)) {
         process.stdout.write(`npm already has ${pkg.name}@${pkg.version}; skipping.\n`);
         continue;
       }
       if (result.status !== 0) {
-        process.stderr.write(result.stderr);
         failures.push(`${pkg.name}: bootstrap publish failed`);
         continue;
       }
