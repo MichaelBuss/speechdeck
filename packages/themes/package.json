@@ -2,6 +2,17 @@
   "name": "@speechdeck/themes",
   "version": "0.0.1",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MichaelBuss/speechdeck.git",
+    "directory": "packages/themes"
+  },
+  "files": [
+    "harbour/theme.json",
+    "ink/theme.json",
+    "signal/theme.json",
+    "LICENSE"
+  ],
   "type": "module",
   "exports": {
     "./harbour/theme.json": "./harbour/theme.json",

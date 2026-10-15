@@ -2,9 +2,18 @@
   "name": "@speechdeck/create",
   "version": "0.0.1",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MichaelBuss/speechdeck.git",
+    "directory": "packages/create"
+  },
   "bin": {
     "create-speechdeck": "./src/cli.ts"
   },
+  "files": [
+    "src",
+    "LICENSE"
+  ],
   "type": "module",
   "exports": {
     ".": "./src/index.ts"
