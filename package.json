@@ -9,14 +9,17 @@
     "fmt:check": "oxfmt --check",
     "test": "vitest run",
     "check": "pnpm typecheck && pnpm lint && pnpm fmt:check && pnpm test",
-    "publish:jsr": "node scripts/publish-jsr.mjs",
-    "bump": "node scripts/bump.ts",
+    "changeset": "changeset",
+    "version": "changeset version && node scripts/sync-versions.ts",
+    "release": "node scripts/release.ts",
     "readyrun": "node scripts/readyrun.mjs"
   },
   "dependencies": {
     "@readyrun/readyrun": "jsr:^0.1.5"
   },
   "devDependencies": {
+    "@changesets/changelog-github": "^1.0.1",
+    "@changesets/cli": "^3.0.3",
     "@tanstack/eslint-plugin-router": "^1.162.0",
     "@types/node": "^26.3.0",
     "eslint-plugin-solid": "^0.16.0",

@@ -1,5 +1,7 @@
 # Publishing stays informational until someone bumps, then merge publishes
 
+**Superseded by [ADR 0022](0022-a-release-pr-is-the-only-publish-lever-and-every-version-ships-to-npm-and-jsr.md):** releases now run through Changesets — a Version Packages PR is the only publish lever, and every version ships to npm and JSR. The `/bump` workflow and its scripts are deleted. Kept for the record.
+
 Publishing on every push to `main` was fine; failing a PR because the version wasn't bumped was not — it punished PRs that had no reason to ship yet. Ticket 69 wired `pnpm publish:jsr` to `main` and a JSR dry-run to the merge gate; that still assumed someone would edit five `package.json` / `jsr.json` files by hand when a real publish was wanted.
 
 `.github/workflows/ci.yml` still runs `check` on push and pull request, and `jsr-dry-run` on `pull_request` so a package that cannot publish cannot merge. A new `publish-preview` job on pull requests only comments (never fails) on whether this PR's published-file changes are already shipped, ready to ship, or waiting on a bump — and mentions `/bump` even when there's nothing to ship yet, so it stays discoverable.
