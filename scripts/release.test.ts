@@ -7,6 +7,7 @@ import {
   pinManifest,
   planRelease,
   publishedVersions,
+  releaseCli,
   workspaceSpec,
 } from "./release.ts";
 
@@ -119,3 +120,30 @@ test("a manifest without workspace deps passes through byte-for-byte", () => {
   const plain = manifest.replaceAll('"workspace:*"', '"^0.2.0"');
   assert.equal(pinManifest(plain, versionsByName, "npm"), plain);
 });
+
+test("unknown or combined flags are refused before anything runs", async () => {
+  const capture = captureStderr();
+  try {
+    assert.equal(await releaseCli(["--help"]), 1);
+    assert.equal(await releaseCli(["--dry-run", "--bootstrap"]), 1);
+    assert.equal(await releaseCli(["publish"]), 1);
+    assert.match(capture.read(), /Unknown arguments/);
+  } finally {
+    capture.restore();
+  }
+});
+
+function captureStderr() {
+  const chunks: string[] = [];
+  const original = process.stderr.write.bind(process.stderr);
+  process.stderr.write = ((chunk: string) => {
+    chunks.push(chunk);
+    return true;
+  }) as typeof process.stderr.write;
+  return {
+    read: () => chunks.join(""),
+    restore: () => {
+      process.stderr.write = original as typeof process.stderr.write;
+    },
+  };
+}

@@ -19,7 +19,10 @@ Releases run through [Changesets](https://github.com/changesets/changesets). Ver
 
 ## One-time setup already done (for the record)
 
-- **Trusted publishing** on npmjs.com: each of `@speechdeck/core`, `@speechdeck/themes`, `@speechdeck/vite`, `@speechdeck/create`, `@speechdeck/solid` → Settings → Trusted publishing → GitHub Actions (`MichaelBuss` / `speechdeck` / `publish.yml`), with **Allow npm publish** ticked (new configs default to stage-only, which would force a human 2FA approval on every release). The config expires if its first publish doesn't happen within 2 days.
+- **npm scope** `@speechdeck` claimed on npmjs.com.
+- **Trusted publishing** on npmjs.com: each of `@speechdeck/core`, `@speechdeck/themes`, `@speechdeck/vite`, `@speechdeck/create`, `@speechdeck/solid` → Settings → Trusted publishing → GitHub Actions (`MichaelBuss` / `speechdeck` / `publish.yml`), with **Allow npm publish** ticked — configs created after Sep 2026 default to stage-only, which would reject the workflow's direct `npm publish`. A newly created config must see its first successful publish within **2 days** or it expires, so configure and release in the same sitting.
+- Trusted publishing needs the **npm CLI ≥ 11.5.1**; the Release workflow therefore runs Node 24 (Node 22's bundled npm 10.x cannot authenticate via OIDC).
+- **First publish**: a package must exist on npm before its settings expose Trusted Publishing. `node scripts/release.ts --bootstrap` (from a machine where `npm login` has run) creates all five at their current versions, pinning workspace deps exactly like CI; re-runs skip versions already on npm.
 - **Workflow permissions**: repo Settings → Actions → General → "Allow GitHub Actions to create and approve pull requests" is on — without it the changesets action cannot open the Version Packages PR.
 - The release-guidance comment skips bot-authored PRs: the Version Packages PR *is* the release; lecturing it about changesets is noise.
 

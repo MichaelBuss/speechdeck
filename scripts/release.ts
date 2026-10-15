@@ -13,7 +13,10 @@
 // or registry does not block the others, and every failure is reported before
 // the run goes red. When npm publishing is not configured yet, the failure is
 // instructive: exact human setup steps, never a silent skip, never an opaque
-// error.
+// error. `--bootstrap` publishes the current versions to npm under the local
+// npm login (no OIDC) so the packages exist and Trusted Publishing can be
+// configured — the one-time human step; `--dry-run` exercises both packing
+// paths without publishing anything.
 
 import { spawnSync } from "node:child_process";
 import { existsSync, realpathSync } from "node:fs";
@@ -66,7 +69,7 @@ export function npmSetupInstructions(name: string, version: string): string {
   return `npm refused to publish ${name}@${version} — trusted publishing is not configured yet. A human needs to:
 
 1. Claim the \`@speechdeck\` scope on npmjs.com (create the org if it does not exist).
-2. Publish the package once (or open its settings) and configure **Trusted Publishing** for it: registry.npmjs.org, GitHub, repository \`MichaelBuss/speechdeck\`, workflow \`.github/workflows/publish.yml\`, with **Allow npm publish** ticked.
+2. Publish the package once (\`node scripts/release.ts --bootstrap\` does this for all five from a machine where \`npm login\` has been run) and configure **Trusted Publishing** for it: registry.npmjs.org, GitHub, repository \`MichaelBuss/speechdeck\`, workflow \`.github/workflows/publish.yml\`, with **Allow npm publish** ticked.
 3. Re-run the failed release workflow — it skips anything already published and finishes the rest.`;
 }
 
@@ -286,6 +289,7 @@ async function publishOne(
   target: RegistryTarget,
   versionsByName: ReadonlyMap<string, string>,
   dryRun: boolean,
+  local = false,
 ): Promise<ShResult> {
   const manifestPath = join(pkg.dir, "package.json");
   const original = await readFile(manifestPath, "utf8");
@@ -295,7 +299,9 @@ async function publishOne(
       const args = ["publish", "--access", "public"];
       if (dryRun) {
         args.push("--dry-run");
-      } else {
+      } else if (!local) {
+        // Provenance requires OIDC; a local bootstrap publish (no OIDC)
+        // publishes under the human's own npm login instead.
         args.push("--provenance");
       }
       return sh("npm", args, pkg.dir);
@@ -307,8 +313,23 @@ async function publishOne(
   }
 }
 
+const releaseUsage = `Usage: node scripts/release.ts [--dry-run | --bootstrap]
+
+  (no flags)   the real release: publish npm + JSR, tag, GitHub Release.
+  --dry-run    pack every package for both registries; publish nothing.
+  --bootstrap  first publish to npm under the local npm login so Trusted
+               Publishing can be configured; touches nothing else.
+`;
+
 export async function releaseCli(argv: readonly string[]): Promise<number> {
   const dryRun = argv.includes("--dry-run");
+  const bootstrap = argv.includes("--bootstrap");
+  const known = ["--dry-run", "--bootstrap"];
+  const unknown = argv.filter((arg) => !known.includes(arg));
+  if (unknown.length > 0 || (dryRun && bootstrap)) {
+    process.stderr.write(`Unknown arguments: ${unknown.join(" ")}\n\n${releaseUsage}`);
+    return 1;
+  }
   const root = join(dirname(fileURLToPath(import.meta.url)), "..");
   const packages = await readWorkspacePackages(root);
   if (packages.length === 0) {
@@ -316,6 +337,35 @@ export async function releaseCli(argv: readonly string[]): Promise<number> {
     return 1;
   }
   const versionsByName = new Map(packages.map((pkg) => [pkg.name, pkg.version]));
+
+  if (bootstrap) {
+    // First publish: a package must exist on npm before npmjs.com lets a
+    // human configure Trusted Publishing for it. This creates the five at
+    // their current versions under the local npm login (run `npm login`
+    // first; 2FA prompts per package), pinning workspace deps like CI does.
+    // JSR, tags, and GitHub Releases are untouched; re-run safely — a
+    // version already on npm is skipped.
+    const failures: string[] = [];
+    for (const pkg of packages) {
+      const result = await publishOne(pkg, "npm", versionsByName, false, true);
+      if (result.status !== 0 && isNpmAlreadyPublished(result.stderr)) {
+        process.stdout.write(`npm already has ${pkg.name}@${pkg.version}; skipping.\n`);
+        continue;
+      }
+      if (result.status !== 0) {
+        process.stderr.write(result.stderr);
+        failures.push(`${pkg.name}: bootstrap publish failed`);
+        continue;
+      }
+      process.stdout.write(`Published ${pkg.name}@${pkg.version} to npm.\n`);
+    }
+    if (failures.length > 0) {
+      process.stderr.write(`${failures.join("; ")}; fix and re-run the bootstrap.\n`);
+      return 1;
+    }
+    process.stdout.write("All packages exist on npm; configure Trusted Publishing next.\n");
+    return 0;
+  }
 
   if (dryRun) {
     // CI's packaging check: exercise both registries' packing paths without

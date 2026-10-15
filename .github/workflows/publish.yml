@@ -22,7 +22,9 @@ jobs:
           version: 11.21.0
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          # Trusted publishing needs the npm CLI (>= 11.5.1) that ships with
+          # Node 24; Node 22's bundled npm 10.x cannot authenticate via OIDC.
+          node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - uses: changesets/action@v1
