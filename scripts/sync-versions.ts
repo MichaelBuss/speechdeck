@@ -4,6 +4,9 @@
 // after this script runs. Changesets only writes package.json, so `pnpm run
 // version` chains this after `changeset version`. The pnpm lockfile needs no
 // sync: workspace deps use `workspace:*`, which no version bump invalidates.
+// The jsr.json update is a targeted text replacement, not a parse→stringify
+// round-trip: the round-trip reflows every array onto its own lines, which
+// oxfmt rejects and the Version Packages PR's CI would fail on.
 
 import { realpathSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
@@ -25,51 +28,46 @@ function isCliEntry(): boolean {
 
 export type Versioned = { version: string };
 
-export type SyncResult = {
-  jsr: Map<string, Versioned>;
-  changed: readonly string[];
-};
-
-export function syncVersions(
+export function staleJsrVersions(
   packages: readonly { name: string; pkg: Versioned; jsr: Versioned }[],
-): SyncResult {
-  const jsr = new Map<string, Versioned>();
-  const changed: string[] = [];
-  for (const item of packages) {
-    const next = { ...item.jsr };
-    if (item.jsr.version !== item.pkg.version) {
-      next.version = item.pkg.version;
-      changed.push(`packages/${item.name}/jsr.json`);
-    }
-    jsr.set(item.name, next);
+): string[] {
+  return packages
+    .filter(({ pkg, jsr }) => jsr.version !== pkg.version)
+    .map(({ name }) => `packages/${name}/jsr.json`);
+}
+
+export function replaceVersion(source: string, from: string, to: string): string {
+  const needle = `"version": "${from}"`;
+  const next = `"version": "${to}"`;
+  const matches = source.split(needle).length - 1;
+  if (matches !== 1) {
+    throw new Error(
+      `Expected exactly one ${needle} in a jsr.json manifest, found ${matches}; fix that first.`,
+    );
   }
-  return { jsr, changed };
+  return source.replace(needle, next);
 }
 
 export async function syncVersionsCli(): Promise<number> {
   const root = join(dirname(fileURLToPath(import.meta.url)), "..");
-  const packages: { name: string; pkg: Versioned; jsr: Versioned }[] = [];
+  const changed: string[] = [];
   for (const name of jsrPackages) {
+    const jsrPath = join(root, "packages", name, "jsr.json");
     const pkg = JSON.parse(
       await readFile(join(root, "packages", name, "package.json"), "utf8"),
     ) as Versioned;
-    const jsr = JSON.parse(
-      await readFile(join(root, "packages", name, "jsr.json"), "utf8"),
-    ) as Versioned;
-    packages.push({ name, pkg, jsr });
-  }
-  const result = syncVersions(packages);
-  for (const name of jsrPackages) {
-    const next = result.jsr.get(name);
-    if (next === undefined) {
+    const jsrText = await readFile(jsrPath, "utf8");
+    const jsr = JSON.parse(jsrText) as Versioned;
+    if (jsr.version === pkg.version) {
       continue;
     }
-    await writeFile(join(root, "packages", name, "jsr.json"), `${JSON.stringify(next, null, 2)}\n`);
+    await writeFile(jsrPath, replaceVersion(jsrText, jsr.version, pkg.version));
+    changed.push(`packages/${name}/jsr.json`);
   }
   process.stdout.write(
-    result.changed.length === 0
+    changed.length === 0
       ? `All jsr.json manifests agree with their package.json\n`
-      : `Synced ${result.changed.join(", ")} to their package.json versions\n`,
+      : `Synced ${changed.join(", ")} to their package.json versions\n`,
   );
   return 0;
 }
