@@ -331,6 +331,17 @@ const releaseUsage = `Usage: node scripts/release.ts [--dry-run | --bootstrap]
                Publishing can be configured; touches nothing else.
 `;
 
+// Interactive stdio cannot capture npm's 409 text, so the bootstrap asks the
+// registry whether the version exists instead of parsing the publish failure.
+// An unreadable registry still attempts the publish: worst case is npm's own
+// 409, which the registry rejects harmlessly.
+export function bootstrapNeedsPublish(
+  version: string,
+  onNpm: readonly string[] | undefined,
+): boolean {
+  return onNpm === undefined || !onNpm.includes(version);
+}
+
 export async function releaseCli(argv: readonly string[]): Promise<number> {
   const dryRun = argv.includes("--dry-run");
   const bootstrap = argv.includes("--bootstrap");
@@ -355,25 +366,31 @@ export async function releaseCli(argv: readonly string[]): Promise<number> {
     // first), pinning workspace deps like CI does. npm runs with inherited
     // stdio so its 2FA browser authentication works — expect one browser
     // round per package. JSR, tags, and GitHub Releases are untouched;
-    // re-run safely — a version already on npm is skipped.
+    // re-run safely.
     const failures: string[] = [];
+    let published = 0;
     for (const pkg of packages) {
-      const result = await publishOne(pkg, "npm", versionsByName, false, true, true);
-      if (result.status !== 0 && isNpmAlreadyPublished(result.stderr)) {
+      if (!bootstrapNeedsPublish(pkg.version, await npmVersions(pkg.name))) {
         process.stdout.write(`npm already has ${pkg.name}@${pkg.version}; skipping.\n`);
         continue;
       }
+      const result = await publishOne(pkg, "npm", versionsByName, false, true, true);
       if (result.status !== 0) {
         failures.push(`${pkg.name}: bootstrap publish failed`);
         continue;
       }
+      published++;
       process.stdout.write(`Published ${pkg.name}@${pkg.version} to npm.\n`);
     }
     if (failures.length > 0) {
       process.stderr.write(`${failures.join("; ")}; fix and re-run the bootstrap.\n`);
       return 1;
     }
-    process.stdout.write("All packages exist on npm; configure Trusted Publishing next.\n");
+    process.stdout.write(
+      published === 0
+        ? "Nothing to bootstrap: every version is already on npm.\n"
+        : "All packages exist on npm; configure Trusted Publishing next.\n",
+    );
     return 0;
   }
 

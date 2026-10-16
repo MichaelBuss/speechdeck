@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 import {
+  bootstrapNeedsPublish,
   isNpmAlreadyPublished,
   isNpmSetupError,
   npmSetupInstructions,
@@ -131,6 +132,14 @@ test("unknown or combined flags are refused before anything runs", async () => {
   } finally {
     capture.restore();
   }
+});
+
+test("bootstrap skips versions the registry already has, publishes the rest", () => {
+  assert.equal(bootstrapNeedsPublish("0.0.1", ["0.0.1"]), false);
+  assert.equal(bootstrapNeedsPublish("0.0.2", ["0.0.1"]), true);
+  assert.equal(bootstrapNeedsPublish("0.0.1", []), true);
+  // An unreadable registry must not silently skip the package.
+  assert.equal(bootstrapNeedsPublish("0.0.1", undefined), true);
 });
 
 function captureStderr() {
