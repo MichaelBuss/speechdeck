@@ -12,10 +12,10 @@
     "changeset": "changeset",
     "version": "changeset version && node scripts/sync-versions.ts",
     "release": "node scripts/release.ts",
-    "readyrun": "node scripts/readyrun.mjs"
+    "readyrun": "readyrun"
   },
   "dependencies": {
-    "@readyrun/readyrun": "jsr:^0.1.5"
+    "@readyrun/readyrun": "^0.2.1"
   },
   "devDependencies": {
     "@changesets/changelog-github": "^1.0.1",

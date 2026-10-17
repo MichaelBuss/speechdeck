@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@readyrun/readyrun':
-        specifier: jsr:^0.1.5
-        version: '@jsr/readyrun__readyrun@0.1.5'
+        specifier: ^0.2.1
+        version: 0.2.1
     devDependencies:
       '@changesets/changelog-github':
         specifier: ^1.0.1
@@ -392,9 +392,6 @@ packages:
   '@jridgewell/sourcemap-codec@1.5.5':
     resolution: {integrity: sha512-cYQ9310grqxueWbl+WuIUIaiUaDcj7WOq5fVhEljNVgRfOUhY9fy2zTvfoqWsnebh8Sl70VScFbICvJnLKB0Og==}
 
-  '@jsr/readyrun__readyrun@0.1.5':
-    resolution: {integrity: sha512-xy0+3vZr+5DdzsEMZ3N7bHutPhnF/W2KGBwsMoxprshiYJcAf7f1SqWJ/otAd4t8qj3vsqagN6pJ9lnn2zBySg==, tarball: https://npm.jsr.io/~/11/@jsr/readyrun__readyrun/0.1.5.tgz}
-
   '@manypkg/find-root@3.1.0':
     resolution: {integrity: sha512-BcSqCyKhBVZ5YkSzOiheMCV41kqAFptW6xGqYSTjkVTl9XQpr+pqHhwgGCOHQtjDCv7Is6EFyA14Sm5GVbVABA==}
     engines: {node: '>=20.0.0'}
@@ -687,6 +684,11 @@ packages:
   '@pnpm/deps.graph-sequencer@1100.0.1':
     resolution: {integrity: sha512-pOr5+q1fLYKwFN3LAJuGZEnfXDcQ73zqgDHMtGy+K+uIoUqyY+6MeDCWFwfu+4EFuq76I5EPFofoNAI+Bmmq4A==}
     engines: {node: '>=22.13'}
+
+  '@readyrun/readyrun@0.2.1':
+    resolution: {integrity: sha512-8VrIb0cjUjy8Ia4ejQCnZJIO9S3Ieah3xvPqMr4u5JrhAvdgv08m4k3KM4cxPCtPU9Pvi+o6oo7Di0bV4xoesQ==}
+    engines: {node: '>=24'}
+    hasBin: true
 
   '@rolldown/binding-android-arm-eabi@1.2.5':
     resolution: {integrity: sha512-DLe/i+l8ynIBY7XEQ191TeZvCoowIGa18R+dIV30GW7DiOtp74i/xX8hs8GUjW5ARV7VZuie3d6AumSmCwbeRA==}
@@ -2048,10 +2050,6 @@ snapshots:
 
   '@jridgewell/sourcemap-codec@1.5.5': {}
 
-  '@jsr/readyrun__readyrun@0.1.5':
-    dependencies:
-      '@clack/prompts': 1.7.0
-
   '@manypkg/find-root@3.1.0':
     dependencies:
       '@manypkg/tools': 2.1.2
@@ -2202,6 +2200,10 @@ snapshots:
     optional: true
 
   '@pnpm/deps.graph-sequencer@1100.0.1': {}
+
+  '@readyrun/readyrun@0.2.1':
+    dependencies:
+      '@clack/prompts': 1.7.0
 
   '@rolldown/binding-android-arm-eabi@1.2.5':
     optional: true
