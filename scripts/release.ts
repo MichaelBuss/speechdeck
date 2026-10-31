@@ -450,12 +450,15 @@ export async function releaseCli(argv: readonly string[]): Promise<number> {
     if (plan.npm) {
       process.stdout.write(`Publishing ${pkg.name}@${pkg.version} to npm with provenance.\n`);
       const publish = await publishOne(pkg, "npm", versionsByName, false);
+      // Pass npm's own output through, success included: it is the only place
+      // that says whether the version went live or was staged for approval.
+      process.stdout.write(publish.stdout);
+      process.stderr.write(publish.stderr);
       if (publish.status !== 0 && isNpmAlreadyPublished(publish.stderr)) {
         process.stdout.write(
           `npm already has ${pkg.name}@${pkg.version} (a prior run got there first); skipping.\n`,
         );
       } else if (publish.status !== 0) {
-        process.stderr.write(publish.stderr);
         failures.push(`${pkg.name}: npm publish failed`);
         if (isNpmSetupError(publish.stderr)) {
           const instructions = npmSetupInstructions(pkg.name, pkg.version);
@@ -473,8 +476,9 @@ export async function releaseCli(argv: readonly string[]): Promise<number> {
     if (plan.jsr) {
       process.stdout.write(`Publishing ${pkg.name}@${pkg.version} to JSR.\n`);
       const publish = await publishOne(pkg, "jsr", versionsByName, false);
+      process.stdout.write(publish.stdout);
+      process.stderr.write(publish.stderr);
       if (publish.status !== 0) {
-        process.stderr.write(publish.stderr);
         failures.push(`${pkg.name}: JSR publish failed`);
       }
     }
